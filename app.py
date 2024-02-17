@@ -820,8 +820,7 @@ def format_predictions(predictions_df):
 
 # Trigger mode (submit)
 @app.callback(
-    [Output("prediction-output", "children"),
-     Output("coords-display-container", "children")],
+    [Output("prediction-output", "children")],
     [Input("submit_cords", "n_clicks")],
     [State("edit_control", "geojson"),
      State("coords-json", "children")]
@@ -859,7 +858,7 @@ def trigger_action_and_predict(n_clicks, geojson, json_coords):
     # Format predictions for display
     prediction_output = format_predictions(predictions)
     
-    return prediction_output, table
+    return prediction_output
 
 def trainModel(): 
     df = pd.read_csv('datasets/dataset.csv')
@@ -967,8 +966,7 @@ def display_coords(geojson):
         Output("coords-json", "children")
     ],
     [
-        Input("edit_control", "geojson"),
-        Input('intermediate-value', 'children')
+        Input("edit_control", "geojson")
     ]
 )
 def display_coords(geojson):
