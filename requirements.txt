@@ -3,4 +3,8 @@ pandas
 dash-bootstrap-components>=1.0.0b3
 openpyxl
 dash-leaflet
-
+dash_extensions
+joblib
+numpy
+scipy
+scikit-learn
