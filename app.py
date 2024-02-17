@@ -818,12 +818,15 @@ def format_predictions(predictions_df):
                     for index, row in predictions_df.iterrows()])
 
 
-# Trigger mode (submit)
 @app.callback(
-    [Output("prediction-output", "children")],
+    [
+        Output("coords-display-container", "children", allow_duplicate=True),  # Update the display container
+        Output("coords-json", "children", allow_duplicate=True)  # Update the JSON data
+    ],
     [Input("submit_cords", "n_clicks")],
     [State("edit_control", "geojson"),
-     State("coords-json", "children")]
+     State("coords-json", "children")],
+    prevent_initial_call=True
 )
 def trigger_action_and_predict(n_clicks, geojson, json_coords):
     if n_clicks is None or not geojson:
@@ -831,34 +834,19 @@ def trigger_action_and_predict(n_clicks, geojson, json_coords):
     
     # Convert JSON back to DataFrame
     df_coords = pd.read_json(json_coords, orient='split')
-    #print(df_coords.head())
-    #df_coords = convert_geojson_to_dataframe(geojson)
-    
-    # Assuming geojson to DataFrame conversion is done here
-    #df = convert_geojson_to_dataframe(geojson)
-    #print(df_coords.head())
-    #trainModel()
+
     # Initialize your RandomForest and model
     randomForest = RandomForest()
     model = randomForest.load_model('random_forest_model.joblib')
-    #trainModel()
-    #test_data = pd.DataFrame({
-    #        'xlong': [-99.787033, -99.725624, -99.769722, -99.80706, -99.758476, -99.772133, -99.740372, -99.810005, -99.762489, -99.761673, -99.776581, -99.724426, -99.714981, -99.70752, -99.760849, -99.745461, -99.733009, -99.750793, -99.814697, -99.742203, -99.737236, -99.741096, -99.781944, -99.796494, -99.733086, -99.775742, -99.724144, -99.786308, -99.737022, -99.776512, -99.741119, -99.735718, -99.762627, -99.74147, -99.804855, -99.792625, -99.788475, -99.799377, -99.79464, -99.756958, -99.790665, -99.720284, -99.714928, -99.782089, -99.821129, -99.744316, -99.731606, -99.778603, -99.782372, -99.826469, -99.751343, -99.752548, -99.775963, -99.764076, -99.812325, -99.809586, -99.752739, -99.771027, -99.720001, -99.746208, -118.364197, -118.363762, -118.36441, -93.518082, -93.632835, -93.523651, -93.623009, -93.700424, -93.430367, -92.672089, -93.51371, -93.515892, -93.367798, -70.541801, -70.545303, -70.547798, -70.545303, -93.325691, -93.428093, -93.431992, -93.354897, -93.632095, -93.636795, -83.736298, -83.736298, -94.65139, -94.707893, -94.685692, -94.683395, -94.673988, -94.695091, -94.68869, -94.61039, -94.692795, -94.706894, -94.687691, -94.659096, -94.674889, -94.68409, -94.68869, -94.665192, -94.670395, -94.618591, -94.69899, -94.723892, -94.611893, -94.658493, -94.62249, -94.669289, -94.634491, -94.666992, -94.676788, -94.677391, -94.689392, -94.71209, -94.652596, -94.613396, -94.665092, -94.703896, -94.688995, -94.726593, -94.63839, -94.655289, -94.647896, -94.612091, -94.67009, -94.619591, -94.654495, -94.683502, -94.674194, -94.614189, -94.673492, -94.630989, -94.692696, -94.670593, -94.647491, -94.615791, -94.660995, -94.715591, -94.704094, -94.696693, -94.716591, -94.722794, -94.622093, -94.695595, -94.730293, -94.618294, -94.678894, -94.676994, -94.711792, -94.606728, -94.681793, -94.635391, -94.691689, -94.659866, -94.655891, -94.655891, -94.648689, -94.630692, -94.665695, -94.626991, -94.686043, -94.697762, -94.671776, -94.649178, -94.734169, -94.724846, -94.72422, -94.662544, -94.664101, -94.664093, -94.647606, -94.725616, -94.639961, -94.678551, -94.665192, -94.716476, -94.669571, -94.659653, -94.712288, -94.705017, -94.673912, -94.713112, -94.664482, -94.728653, -94.695923, -94.66095, -94.657524, -94.712463, -94.649925, -94.667892, -94.634834, -94.728088, -94.697464, -94.616638, -94.721962, -94.65696, -94.615784, -94.716339],
-    #        'ylat': [36.501724, 36.437126, 36.444931, 36.513935, 36.444984, 36.431931, 36.489838, 36.476582, 36.454903, 36.502792, 36.485386, 36.491375, 36.490211, 36.490849, 36.429668, 36.448009, 36.489468, 36.488712, 36.48975, 36.432888, 36.498882, 36.423683, 36.433651, 36.503357, 36.451591, 36.445465, 36.421703, 36.44593, 36.435909, 36.429882, 36.50259, 36.423359, 36.515823, 36.451477, 36.476624, 36.474033, 36.476807, 36.440704, 36.438831, 36.491249, 36.44141, 36.424934, 36.424843, 36.473541, 36.517494, 36.513348, 36.44109, 36.502522, 36.484463, 36.515972, 36.446674, 36.428902, 36.458096, 36.440956, 36.513859, 36.495914, 36.504105, 36.456665, 36.489346, 36.427345, 35.077644, 35.077908, 35.077435, 42.01363, 41.882477, 42.006813, 41.88147, 41.977608, 42.028233, 41.742046, 42.019119, 42.016373, 42.49794, 41.752491, 41.754192, 41.75959, 41.757591, 42.20639, 42.146091, 42.145592, 41.904194, 42.335491, 42.335491, 41.382492, 41.384693, 41.421494, 41.470394, 41.471092, 41.484993, 41.494892, 41.457893, 41.486591, 41.441395, 41.499294, 41.440792, 41.445091, 41.466694, 41.423492, 41.443592, 41.499294, 41.452293, 41.434994, 41.466793, 41.457794, 41.463192, 41.452892, 41.433193, 41.466595, 41.452293, 41.439693, 41.482494, 41.452393, 41.463093, 41.470192, 41.468391, 41.455894, 41.467094, 41.423695, 41.499695, 41.435894, 41.442894, 41.439693, 41.466293, 41.465393, 41.478592, 41.495193, 41.451992, 41.432995, 41.433804, 41.434193, 41.441395, 41.463093, 41.481194, 41.434994, 41.423992, 41.443691, 41.452694, 41.421093, 41.441792, 41.471092, 41.499092, 41.469791, 41.443394, 41.441994, 41.445194, 41.442394, 41.441593, 41.443993, 41.473293, 41.441292, 41.441357, 41.471592, 41.449795, 41.445091, 41.457573, 41.421394, 41.457294, 41.455395, 41.439194, 41.470993, 41.481194, 40.907246, 40.927402, 40.91991, 40.947777, 40.903179, 40.906811, 40.91663, 40.91256, 40.952431, 40.931583, 40.912476, 40.925251, 40.918289, 40.951794, 40.902493, 40.913757, 40.902508, 40.925396, 40.912891, 40.916325, 40.955795, 40.929382, 40.9258, 40.905937, 40.901394, 40.906422, 40.913597, 40.923447, 40.917538, 40.919884, 40.90395, 40.916672, 40.908005, 40.913837, 40.927204, 40.905529, 40.906044, 40.92387]
-    #})
-    
-    predictions = model.predict_with_location(df_coords)
-    print(predictions)
-    
-    table = dbc.Table.from_dataframe(predictions, striped=True, bordered=True, hover=True)
+
     # Make predictions
-    #predictions = ai_dispatcher.predictRandomForest(model, df)
-    #predictions = randomForest.predict(test_data)
-    
-    # Format predictions for display
+    predictions = model.predict_with_location(df_coords)
+
+    # Format predictions for display (e.g., as a table)
     prediction_output = format_predictions(predictions)
-    
-    return prediction_output
+
+    # Here, the old content is "cleared" by replacing it with new content
+    return prediction_output, json_coords
 
 def trainModel(): 
     df = pd.read_csv('datasets/dataset.csv')
@@ -917,48 +905,19 @@ def convert_geojson_to_dataframe(geojson):
     # Implement conversion logic
     return pd.DataFrame()
 
-# Helper function to format predictions for display
 def format_predictions(predictions):
-    # Implement formatting logic
-    return html.Div(str(predictions))  # Simple example
-
-# Callback to display coordinates directly from the edit_control's geojson data.
-'''
-@app.callback(Output("coords-display-container", "children"), Input("edit_control", "geojson"))
-def display_coords(geojson):
-    if not geojson or "features" not in geojson:
-        raise PreventUpdate
-    rows = []  # List to hold row data
-    point_counter, polygon_counter = 1, 1  # Initialize counters
+    print("In format predictions")
+    print(predictions)
     
-    for feature in geojson["features"]:
-        geometry = feature.get("geometry")
-        geom_type = geometry.get("type")
-        coords = geometry.get("coordinates")
-        
-        if geom_type == "Point":
-            lat, lon = coords[1], coords[0]
-            label = f"Point {point_counter}"
-            rows.append({"Type": label, "Latitude": lat, "Longitude": lon})
-            point_counter += 1  # Increment point counter
-            
-        elif geom_type == "Polygon":
-            vertex_counter = 1  # Initialize vertex counter for each polygon
-            for coord in coords[0]:  # Assuming the first ring of coordinates for simplicity
-                lat, lon = coord[1], coord[0]
-                label = f"Polygon {polygon_counter} Vertex {vertex_counter}"
-                rows.append({"Type": label, "Latitude": lat, "Longitude": lon})
-                vertex_counter += 1  # Increment vertex counter
-            polygon_counter += 1  # Increment polygon counter
-            
-    if not rows:
-        return "No coordinates available"
+    # Assuming `predictions` is a DataFrame with the specified columns
+    if predictions.empty:
+        return "No predictions available"
 
-    # Convert rows into a DataFrame and then into a dbc.Table
-    df_coords = pd.DataFrame(rows)
-    table = dbc.Table.from_dataframe(df_coords, striped=True, bordered=True, hover=True)
+    # The DataFrame is already in the desired format, so we directly convert it to a Dash Bootstrap table
+    table = dbc.Table.from_dataframe(predictions, striped=True, bordered=True, hover=True, index=False)
+    
     return table
-'''
+
 # Callback to display coordinates directly from the edit_control's geojson data.
 @app.callback(
     [

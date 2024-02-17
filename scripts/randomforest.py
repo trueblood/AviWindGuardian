@@ -11,6 +11,7 @@ from scripts.decisiontreeclassifier import DecisionTreeClassifier
 from sklearn.preprocessing import LabelEncoder
 import pandas as pd
 from sklearn.model_selection import ParameterGrid
+from shapely.geometry import Point, Polygon
 #from line_profiler import profile
 
 
@@ -73,7 +74,7 @@ class RandomForest:
         final_predictions, _ = mode(predictions, axis=1)
         return final_predictions.flatten()
     
-    def predict_with_location(self, X_df):
+    '''def predict_with_location(self, X_df):
         # Assuming X_df is a pandas DataFrame with 'xlong' and 'ylat' columns
         X = X_df.to_numpy()  # Convert to NumPy array for model input
         predictions = np.zeros((X.shape[0], len(self.trees)))
@@ -91,7 +92,74 @@ class RandomForest:
             'prediction': final_predictions
         })
         
-        return results_df
+        return results_df'''
+    
+    def predict_with_location(self, X_df):
+        print("Predicting with location")
+        # Filter rows for Points and Polygons separately
+        points_df = X_df[X_df['Type'] == 'Point']
+        polygons_df = X_df[X_df['Type'] == 'Polygon']
+        
+        # Loop through each point in points_df
+        for index, row in points_df.iterrows():
+            latitude = row['Latitude']
+            longitude = row['Longitude']
+            
+            # Prepare the point for prediction (ensure it matches your model's input shape/expectation)
+            point = np.array([[longitude, latitude]])  # Assuming model expects shape (1, 2) with [longitude, latitude]
+            
+            # Initialize an array to hold prediction for each tree (assuming binary classification for simplicity)
+            predictions = np.zeros((1, len(self.trees)))
+            
+            for i, (tree, features_indices) in enumerate(self.trees):
+                # Direct prediction on the point; adjust if your model's prediction method differs
+                predictions[:, i] = tree.predict(point[:, features_indices])
+            
+            # Use mode to determine the final prediction (most common prediction among all trees)
+            final_prediction = mode(predictions, axis=1)[0].flatten()[0]
+            
+            # Update the 'Prediction' column for the current row
+            X_df.at[index, 'Prediction'] = final_prediction
+        
+        print(X_df)
+            
+        '''
+        print(points_df)
+        print(polygons_df)
+        # Convert to NumPy array for model input
+        points = points_df[['Latitude', 'Longitude']].to_numpy()
+        predictions = np.zeros((points.shape[0], len(self.trees)))
+        
+        for i, (tree, features_indices) in enumerate(self.trees):
+            predictions[:, i] = tree.predict(points[:, features_indices])
+            
+        
+        final_predictions = mode(predictions, axis=1)[0].flatten()
+        print(final_predictions)
+        
+        # Create a results DataFrame for points
+        results_df = pd.DataFrame({
+            'group': points_df['group'].values,
+            'xlong': points_df['xlong'].values,
+            'ylat': points_df['ylat'].values,
+            'prediction': final_predictions
+        })
+        
+        print(results_df.head())
+        
+        # For each polygon, check if points are inside it and assign the polygon's prediction to those points
+        for _, poly_row in polygons_df.iterrows():
+            # Assuming the first and last points are the same for each polygon, forming a closed loop
+            polygon = Polygon(zip(poly_row['xlong'], poly_row['ylat']))
+            for index, point_row in results_df.iterrows():
+                point = Point(point_row['xlong'], point_row['ylat'])
+                if polygon.contains(point):
+                    # Assign polygon's group number to point or any other logic needed
+                    results_df.at[index, 'group'] = poly_row['group']
+                    # Additional logic here if you want to change the prediction based on polygon
+        '''
+        return X_df
+
 
     def load_model(self, filename):
         return load(filename)
