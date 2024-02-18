@@ -74,31 +74,11 @@ class RandomForest:
         final_predictions, _ = mode(predictions, axis=1)
         return final_predictions.flatten()
     
-    '''def predict_with_location(self, X_df):
-        # Assuming X_df is a pandas DataFrame with 'xlong' and 'ylat' columns
-        X = X_df.to_numpy()  # Convert to NumPy array for model input
-        predictions = np.zeros((X.shape[0], len(self.trees)))
-        
-        for i, (tree, features_indices) in enumerate(self.trees):
-            predictions[:, i] = tree.predict(X[:, features_indices])
-        
-        final_predictions, _ = mode(predictions, axis=1)
-        final_predictions = final_predictions.flatten()
-        
-        # Combine longitude, latitude, and predictions into a new DataFrame
-        results_df = pd.DataFrame({
-            'xlong': X_df['xlong'],
-            'ylat': X_df['ylat'],
-            'prediction': final_predictions
-        })
-        
-        return results_df'''
-    
     def predict_with_location(self, X_df):
         print("Predicting with location")
         # Filter rows for Points and Polygons separately
         points_df = X_df[X_df['Type'] == 'Point']
-        polygons_df = X_df[X_df['Type'] == 'Polygon']
+        polygons_df = X_df[X_df['Type'] == 'Polygon'].groupby('Group')
         
         # Loop through each point in points_df
         for index, row in points_df.iterrows():
@@ -121,44 +101,45 @@ class RandomForest:
             # Update the 'Prediction' column for the current row
             X_df.at[index, 'Prediction'] = final_prediction
         
-        print(X_df)
-            
-        '''
-        print(points_df)
-        print(polygons_df)
-        # Convert to NumPy array for model input
-        points = points_df[['Latitude', 'Longitude']].to_numpy()
-        predictions = np.zeros((points.shape[0], len(self.trees)))
+    results = []
+
+    for group_number, group_df in grouped_polygons_df:
+        polygon_coords = list(zip(group_df['lon'], group_df['lat']))
+        polygon = Polygon(polygon_coords)
         
-        for i, (tree, features_indices) in enumerate(self.trees):
-            predictions[:, i] = tree.predict(points[:, features_indices])
-            
+        # Simplified method to generate points inside the polygon, approximately one mile apart
+        minx, miny, maxx, maxy = polygon.bounds
+        lat_steps = np.arange(miny, maxy, 1/69)  # Approx. 1 mile steps in latitude
+        long_steps = np.arange(minx, maxx, 1/(np.cos(np.radians(miny)) * 69))  # Approx. 1 mile steps in longitude, adjusted for latitude at miny
         
-        final_predictions = mode(predictions, axis=1)[0].flatten()
-        print(final_predictions)
-        
-        # Create a results DataFrame for points
-        results_df = pd.DataFrame({
-            'group': points_df['group'].values,
-            'xlong': points_df['xlong'].values,
-            'ylat': points_df['ylat'].values,
-            'prediction': final_predictions
-        })
-        
-        print(results_df.head())
-        
-        # For each polygon, check if points are inside it and assign the polygon's prediction to those points
-        for _, poly_row in polygons_df.iterrows():
-            # Assuming the first and last points are the same for each polygon, forming a closed loop
-            polygon = Polygon(zip(poly_row['xlong'], poly_row['ylat']))
-            for index, point_row in results_df.iterrows():
-                point = Point(point_row['xlong'], point_row['ylat'])
+        group_predictions = []
+        for lat in lat_steps:
+            for lon in long_steps:
+                point = Point(lon, lat)
                 if polygon.contains(point):
-                    # Assign polygon's group number to point or any other logic needed
-                    results_df.at[index, 'group'] = poly_row['group']
-                    # Additional logic here if you want to change the prediction based on polygon
-        '''
-        return X_df
+                    prediction = model_predict((lon, lat))
+                    group_predictions.append(prediction)
+        
+        # Store the group number and the aggregated predictions
+        results.append({
+            'group_number': group_number,
+            'predictions': group_predictions
+        })
+
+    # Iterate through the results to sum predictions and update original_df
+    for result in results:
+        group_number = result['group_number']
+        prediction_sum = sum(result['predictions'])  # Sum up predictions for the group
+        
+        # Find the index of the first occurrence of each group in X_df
+        top_row_index = X_df[X_df['Group'] == group_number].index.min()  # Get the minimum index for the group
+
+        # Update the 'Prediction' column for the top row of the group
+        if pd.notnull(top_row_index):  # Check if the group number exists in X_df
+            X_df.at[top_row_index, 'Prediction'] = prediction_sum
+        
+    print(X_df)
+    return X_df
 
 
     def load_model(self, filename):
