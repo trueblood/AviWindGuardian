@@ -811,11 +811,11 @@ def convert_geojson_to_dataframe(geojson):
     
     return pd.DataFrame(coords, columns=['xlong', 'ylat'])
 
-# Helper function to format predictions for display
-def format_predictions(predictions_df):
-    # Formatting the DataFrame as an HTML table or list
-    return html.Ul([html.Li(f"Longitude: {row['xlong']}, Latitude: {row['ylat']}, Prediction: {row['prediction']}")
-                    for index, row in predictions_df.iterrows()])
+# # Helper function to format predictions for display
+# def format_predictions(predictions_df):
+#     # Formatting the DataFrame as an HTML table or list
+#     return html.Ul([html.Li(f"Longitude: {row['xlong']}, Latitude: {row['ylat']}, Prediction: {row['prediction']}")
+#                     for index, row in predictions_df.iterrows()])
 
 
 @app.callback(
@@ -834,13 +834,18 @@ def trigger_action_and_predict(n_clicks, geojson, json_coords):
     
     # Convert JSON back to DataFrame
     df_coords = pd.read_json(json_coords, orient='split')
+    print("trigger_action_and_predict", df_coords)
 
     # Initialize your RandomForest and model
     randomForest = RandomForest()
     model = randomForest.load_model('random_forest_model.joblib')
-
+    
+    
+    print("before predict_with_location")
+    print(df_coords)
     # Make predictions
     predictions = model.predict_with_location(df_coords)
+    print("after predict_with_location")
 
     # Format predictions for display (e.g., as a table)
     prediction_output = format_predictions(predictions)
@@ -906,6 +911,7 @@ def convert_geojson_to_dataframe(geojson):
     return pd.DataFrame()
 
 def format_predictions(predictions):
+    
     print("In format predictions")
     print(predictions)
     
