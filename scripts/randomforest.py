@@ -74,6 +74,48 @@ class RandomForest:
         final_predictions, _ = mode(predictions, axis=1)
         return final_predictions.flatten()
     
+    
+    def predict_with_location(self, X_df):
+        points_df = X_df[X_df['Type'] == 'Point']
+        # Assuming 'polygons_df' has been correctly filtered to include only polygon rows
+        polygons_df = X_df[(X_df['Type'] == 'Polygon') | (X_df['group'].isin(X_df[X_df['Type'] == 'Polygon']['group'])) & (X_df['Type'] != 'Point')]
+
+        for index, row in points_df.iterrows():
+            latitude, longitude = row['Latitude'], row['Longitude']
+            point = np.array([[longitude, latitude]])
+            predictions = np.zeros((1, len(self.trees)))
+            for i, (tree, features_indices) in enumerate(self.trees):
+                predictions[:, i] = tree.predict(point[:, features_indices])
+            final_prediction = mode(predictions, axis=1)[0].flatten()[0]
+            X_df.at[index, 'Prediction'] = final_prediction
+
+        grouped_polygons = polygons_df.groupby('group')
+        for group_number, group_df in grouped_polygons:
+            polygon_coords = [(x, y) for x, y in zip(group_df['Longitude'], group_df['Latitude'])]
+            polygon = Polygon(polygon_coords)
+            minx, miny, maxx, maxy = polygon.bounds
+            sumOfPredictions = 0
+            count = 0
+
+            for lat in np.arange(miny, maxy, 1/69):
+                for lon in np.arange(minx, maxx, 1/(np.cos(np.radians(lat)) * 69)):
+                    if polygon.contains(Point(lon, lat)):
+                        point = np.array([[lon, lat]])
+                        predictions = np.zeros((1, len(self.trees)))
+                        for j, (tree, features_indices) in enumerate(self.trees):
+                            predictions[:, j] = tree.predict(point[:, features_indices])
+                        sumOfPredictions += mode(predictions, axis=1)[0].flatten()[0]
+                        count += 1
+
+            # Update the prediction for this group in X_df
+            if count > 0:
+                average_prediction = sumOfPredictions / count
+                # Find rows belonging to this group and update
+                X_df.loc[X_df['group'] == group_number, 'Prediction'] = average_prediction
+
+        return X_df
+    
+    '''
     def predict_with_location(self, X_df):
         #print("Predicting with location")
         #print(X_df)
@@ -85,6 +127,10 @@ class RandomForest:
         # Initialize an empty dictionary to hold the mapping from group numbers to coordinate lists
         # polygon_groups = {}
 
+        print("Points:", points_df)
+        print("Polygons:", polygons_df)
+        
+        
         #print(polygons_df)
         # Iterate over each row in the polygons dataframe
         # for index, row in polygons_df.iterrows():
@@ -207,7 +253,7 @@ class RandomForest:
                 X_df.at[top_row_index, 'Prediction'] = prediction_total
         print(X_df)
         return X_df
-
+'''
 
     def load_model(self, filename):
         return load(filename)
