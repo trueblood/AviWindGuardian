@@ -75,16 +75,38 @@ class RandomForest:
         return final_predictions.flatten()
     
     def predict_with_location(self, X_df):
-        print("Predicting with location")
-        print(X_df)
+        #print("Predicting with location")
+        #print(X_df)
         # Filter rows for Points and Polygons separately
         points_df = X_df[X_df['Type'] == 'Point']
+        # Filter to include only rows related to polygons (including first row labeled 'Polygon' and subsequent rows)
+        polygons_df = X_df[(X_df['Type'] == 'Polygon') | (X_df['group'].isin(X_df[X_df['Type'] == 'Polygon']['group'])) & (X_df['Type'] != 'Point')]
+        #print(polygons_df)
+        # Initialize an empty dictionary to hold the mapping from group numbers to coordinate lists
+        # polygon_groups = {}
+
+        #print(polygons_df)
+        # Iterate over each row in the polygons dataframe
+        # for index, row in polygons_df.iterrows():
+        #     group_number = row['group']
+        #     # Create a tuple of (longitude, latitude) for the current row
+        #     coord = (row['Longitude'], row['Latitude'])
+
+        #     # If the group number is already in the dictionary, append the coordinate to its list
+        #     if group_number in polygon_groups:
+        #         polygon_groups[group_number].append(coord)
+        #     else:
+        #         # Otherwise, initialize the list with the current coordinate
+        #         polygon_groups[group_number] = [coord]
         
-        polygons_df = X_df[X_df['Type'] == 'Polygon'] #.groupby('Group')
-        print("Points DF:", points_df)
+        # Example usage
+        #for group, coords in polygon_groups.items():
+        #    print(f"Group {group}: {coords}")
+        
+        #print("Points polygons:", polygons_df)
         # Loop through each point in points_df
         for index, row in points_df.iterrows():
-            print("in loop")
+            #print("in loop")
             latitude = row['Latitude']
             longitude = row['Longitude']
             
@@ -100,53 +122,89 @@ class RandomForest:
             
             # Use mode to determine the final prediction (most common prediction among all trees)
             final_prediction = mode(predictions, axis=1)[0].flatten()[0]
-            print(final_prediction)
+            #print(final_prediction)
             # Update the 'Prediction' column for the current row
             X_df.at[index, 'Prediction'] = final_prediction
-            print(X_df)
-        # results = []
+            #print(X_df)
+        results = []
+        #print("before poly loop")
 
-        # for group_number, group_df in polygons_df:
-        #     polygon_coords = list(zip(group_df['lon'], group_df['lat']))
-        #     polygon = Polygon(polygon_coords)
-            
-        #     # Simplified method to generate points inside the polygon, approximately one mile apart
-        #     minx, miny, maxx, maxy = polygon.bounds
-        #     lat_steps = np.arange(miny, maxy, 1/69)  # Approx. 1 mile steps in latitude
-        #     long_steps = np.arange(minx, maxx, 1/(np.cos(np.radians(miny)) * 69))  # Approx. 1 mile steps in longitude, adjusted for latitude at miny
-            
-        #     group_predictions = []
-        #     for lat in lat_steps:
-        #         for lon in long_steps:
-        #             point = Point(lon, lat)
-        #             if polygon.contains(point):
-        #                 # Initialize an array to hold prediction for each tree (assuming binary classification for simplicity)
-        #                 predictions = np.zeros((1, len(self.trees)))
-            
-        #                 for i, (tree, features_indices) in enumerate(self.trees):
-        #                     # Direct prediction on the point; adjust if your model's prediction method differs
-        #                     predictions[:, i] = tree.predict(point[:, features_indices])
-        #                     #prediction = model_predict((lon, lat))
-        #                     group_predictions.append(predictions)
-            
-        #     # Store the group number and the aggregated predictions
-        #     results.append({
-        #         'group_number': group_number,
-        #         'predictions': group_predictions
-        #     })
+        grouped = polygons_df.groupby('group').agg(list).reset_index()
+        print("grouped:", grouped)
+        for i, (index, group_df) in enumerate(grouped.iterrows()):
+            # Your code here
+            #print("Processing group:", group_df['group'])
+            #print("in loop polygon")
+            #print(group_df)
+            polygon_coords = [(x, y) for x, y in zip(group_df['Longitude'], group_df['Latitude'])]
+            #print(polygon_coords)
+            polygon = Polygon(polygon_coords)
+                        
+            # Get the bounding box of the polygon
+            minx, miny, maxx, maxy = polygon.bounds
 
-        # # Iterate through the results to sum predictions and update original_df
-        # for result in results:
-        #     group_number = result['group_number']
-        #     prediction_sum = sum(result['predictions'])  # Sum up predictions for the group
+            # Generate points within the bounding box, approximately one mile apart
+            lat_steps = np.arange(miny, maxy, 1/69)  # Approx. 1 mile steps in latitude
+            long_steps = np.arange(minx, maxx, 1/(np.cos(np.radians(miny)) * 69))  # Approx. 1 mile steps in longitude, adjusted for latitude
+            lat_long_steps_length = len(lat_steps)
             
-        #     # Find the index of the first occurrence of each group in X_df
-        #     top_row_index = X_df[X_df['Group'] == group_number].index.min()  # Get the minimum index for the group
+            print("lat_steps:", lat_steps)
+            print("long_steps:", long_steps)
+            sumOfPredictions = 0
+            for h in range(lat_long_steps_length):
+                point = np.array([[long_steps[h], lat_steps[h]]])  # Assuming model expects shape (1, 2) with [longitude, latitude]
+                predictions = np.zeros((1, len(self.trees)))
+                #print("polygon contains point")
+                for j, (tree, features_indices) in enumerate(self.trees):
+                    #print("in tree loop")
+                    # Direct prediction on the point; adjust if your model's prediction method differs
+                    predictions[:, j] = tree.predict(point[:, features_indices])
+                    #prediction = model_predict((lon, lat))
+                    #print(predictions)
+                        # Store the group number and the aggregated predictions
+                    total = np.sum(predictions)   
+                    sumOfPredictions += total
+            results.append({
+                'group_number': i,
+                'predictions': sumOfPredictions
+            })
+            
+            # for lat in lat_steps:
+            #     #print("in loop lat", lat)
+            #     for lon in long_steps:
+            #         point = np.array([[lon, lat]])  # Assuming model expects shape (1, 2) with [longitude, latitude]
+            #         predictions = np.zeros((1, len(self.trees)))
+            #         #print("polygon contains point")
+            #         for i, (tree, features_indices) in enumerate(self.trees):
+            #             #print("in tree loop")
+            #             # Direct prediction on the point; adjust if your model's prediction method differs
+            #             predictions[:, i] = tree.predict(point[:, features_indices])
+            #             #prediction = model_predict((lon, lat))
+            #             #print(predictions)
+            #              # Store the group number and the aggregated predictions
+            #             results.append({
+            #                 'group_number': i,
+            #                 'predictions': predictions
+            #             })
+            
+        # Print all records in results
+        for record in results:
+            print(record)
+            
+            
 
-        #     # Update the 'Prediction' column for the top row of the group
-        #     if pd.notnull(top_row_index):  # Check if the group number exists in X_df
-        #         X_df.at[top_row_index, 'Prediction'] = prediction_sum
+        # Iterate through the results to sum predictions and update original_df
+        for result in results:
+            group_number = result['group_number']
+            prediction_total = result['predictions']  # Sum up predictions for the group
             
+            print("prediction_total:", prediction_total)
+            # Find the index of the first occurrence of each group in X_df
+            top_row_index = X_df[X_df['group'] == group_number].index.min()  # Get the minimum index for the group
+            print("top row index", top_row_index)
+            # Update the 'Prediction' column for the top row of the group
+            if pd.notnull(top_row_index):  # Check if the group number exists in X_df
+                X_df.at[top_row_index, 'Prediction'] = prediction_total
         print(X_df)
         return X_df
 

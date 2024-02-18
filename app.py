@@ -192,7 +192,7 @@ def make_map():
     """
     Function to create a map with specific edit controls.
     """
-    return dl.Map(center=[56, 10], zoom=4, children=[
+    return dl.Map(center=[56, 10], zoom=15, children=[
         dl.TileLayer(), 
         dl.FeatureGroup([
             dl.EditControl(
@@ -834,7 +834,7 @@ def trigger_action_and_predict(n_clicks, geojson, json_coords):
     
     # Convert JSON back to DataFrame
     df_coords = pd.read_json(json_coords, orient='split')
-    print("trigger_action_and_predict", df_coords)
+    #print("trigger_action_and_predict", df_coords)
 
     # Initialize your RandomForest and model
     randomForest = RandomForest()
@@ -842,7 +842,7 @@ def trigger_action_and_predict(n_clicks, geojson, json_coords):
     
     
     print("before predict_with_location")
-    print(df_coords)
+    #print(df_coords)
     # Make predictions
     predictions = model.predict_with_location(df_coords)
     print("after predict_with_location")
