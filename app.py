@@ -783,11 +783,20 @@ def trigger_mode(n_clicks):
     return dict(mode="marker", n_clicks=n_clicks)
 
 # Trigger mode (edit) + action (remove all).
-@app.callback(Output("edit_control", "editToolbar"), Input("clear_all", "n_clicks"))
+@app.callback(
+    [
+        Output("edit_control", "editToolbar"),  # For edit control toolbar update
+        Output("coords-display-container", "children", allow_duplicate=True),  # To clear display container
+        Output("coords-json", "children", allow_duplicate=True)  # To clear JSON data
+    ],
+    [Input("clear_all", "n_clicks")],
+    prevent_initial_call=True
+)
 def trigger_action(n_clicks):
     if n_clicks is None:
         raise PreventUpdate
-    return dict(mode="remove", action="clear all", n_clicks=n_clicks)
+    # Return update for edit control toolbar, empty children for coords-display-container, and empty JSON
+    return dict(mode="remove", action="clear all", n_clicks=n_clicks), None, "{}"
 
 # Helper function to convert GeoJSON to DataFrame
 def convert_geojson_to_dataframe(geojson):
