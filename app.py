@@ -16,6 +16,11 @@ from scripts.randomforest import RandomForest
 import os
 from sklearn.preprocessing import LabelEncoder
 import numpy as np
+import dash
+import dash_core_components as dcc
+import dash_html_components as html
+from dash.dependencies import Input, Output
+
 
 app = Dash(
     __name__,
@@ -648,7 +653,9 @@ app.layout = dbc.Container(
                         html.Div(id="summary_table"),
                         html.H6(datasource_text, className="my-2"),
                         html.Div(id="prediction-output"),
-                        html.Div(id='coords-json', style={'display': 'none'})
+                        html.Div(id='coords-json', style={'display': 'none'}),
+                        html.Button('Train Model', id='train-button', n_clicks=0),
+                        html.Div(id='output-container-button')
                     ],
                     width=12,
                     lg=7,
@@ -843,7 +850,7 @@ def trigger_action_and_predict(n_clicks, geojson, json_coords):
     
     # Convert JSON back to DataFrame
     df_coords = pd.read_json(json_coords, orient='split')
-    #print("trigger_action_and_predict", df_coords)
+    print("trigger_action_and_predict", df_coords)
 
     # Initialize your RandomForest and model
     randomForest = RandomForest()
@@ -861,6 +868,17 @@ def trigger_action_and_predict(n_clicks, geojson, json_coords):
 
     # Here, the old content is "cleared" by replacing it with new content
     return prediction_output, json_coords
+
+@app.callback(
+    Output('output-container-button', 'children'),
+    Input('train-button', 'n_clicks')
+)
+def btn_TrainModel(n_clicks):
+    if n_clicks > 0:
+        trainModel()
+        return 'Model trained.'
+    else:
+        return 'Button not clicked yet.'
 
 def trainModel(): 
     df = pd.read_csv('datasets/dataset.csv')
@@ -910,7 +928,7 @@ def trainModel():
     Y = df['collision'].values
     randomForest = RandomForest()
 
-    mean_accuracy, std_dev = randomForest.evaluate_model_with_kfold(X, Y, n_splits=2)
+    mean_accuracy, std_dev = randomForest.evaluate_model_with_kfold(X, Y, n_splits=5)
     print(f"Mean Accuracy: {mean_accuracy}, Standard Deviation: {std_dev}")
     
 

@@ -4,10 +4,8 @@ from scipy.stats import mode
 from sklearn.datasets import load_iris
 from sklearn.model_selection import KFold
 from sklearn.metrics import accuracy_score
-#from decisiontreeclassifier import DecisionTreeClassifier 
-#from sklearn.tree import DecisionTreeClassifier
-from scripts.decisiontreeclassifier import DecisionTreeClassifier
-#from .decisiontreeclassifier import DecisionTreeClassifier as decisiontreeclassifier
+#from decisiontreeclassifier import DecisionTreeClassifier when running locally
+from scripts.decisiontreeclassifier import DecisionTreeClassifier #when running dash app
 from sklearn.preprocessing import LabelEncoder
 import pandas as pd
 from sklearn.model_selection import ParameterGrid
@@ -256,15 +254,19 @@ class RandomForest:
 '''
 
     def load_model(self, filename):
-        return load(filename)
+        try:
+            return load(filename)
+        except Exception as e:
+            print("Model not found. Exception:", str(e))
+            return None
 
     def train_tree(self, indices, X, y, max_features, n_features, random_state):
         np.random.seed(random_state)  # Ensure reproducibility for each tree
         X_subset, y_subset = X[indices], y[indices]
         features_indices = np.random.choice(n_features, size=max_features, replace=False)
 
-        #tree = DecisionTreeClassifier(min_samples_split=25, max_depth=25, feature_selection_strategy='sqrt')
-        tree = DecisionTreeClassifier(min_samples_split=1, max_depth=1, feature_selection_strategy='sqrt')
+        tree = DecisionTreeClassifier(min_samples_split=25, max_depth=25, feature_selection_strategy='sqrt')
+        #tree = DecisionTreeClassifier(min_samples_split=1, max_depth=1, feature_selection_strategy='sqrt')
         tree.fit(X_subset[:, features_indices], y_subset)
         return tree, features_indices  # Return a tuple of the tree and its feature indices
 
@@ -402,7 +404,8 @@ if __name__ == "__main__":
 
     trainModel = False
     if trainModel:
-        mean_accuracy, std_dev = RandomForest.evaluate_model_with_kfold(X, Y, n_splits=5)
+        randomForest = RandomForest()
+        mean_accuracy, std_dev = randomForest.evaluate_model_with_kfold(X, Y, n_splits=5)
         print(f"Mean Accuracy: {mean_accuracy}, Standard Deviation: {std_dev}")
     else:
         model = RandomForest.load_model('../models/random_forest_model.joblib')
