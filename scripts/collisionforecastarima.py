@@ -1,8 +1,10 @@
+import joblib
 import pandas as pd
 from statsmodels.tsa.arima.model import ARIMA
 import pickle
 from statsmodels.tsa.arima.model import ARIMA
 import pandas as pd
+import plotly.graph_objects as go
 
 class CollisionForecastARIMA:
     def __init__(self, data, columns):
@@ -53,27 +55,32 @@ class CollisionForecastARIMA:
         forecast = self.model_fit.forecast(steps=steps)
         return forecast
 
-    def load_model(FileName):
-        """
-        Loads a pickled ARIMA model from a file.
-
-        Parameters:
-        - FileName: The filename of the pickled ARIMA model.
-
-        Returns:
-        - A model object containing the loaded ARIMA model.
-        """
-        with open(FileName, 'rb') as model_file:
-            model = pickle.load(model_file)
-        return model
+    def load_model(self, filename):
+        try:
+            return joblib.load(filename)
+        except Exception as e:
+            print("Model not found. Exception:", str(e))
+            return None
+    
+    def save_model(self, file_name):
+        joblib.dump(self, file_name)
 
 # Usage example
 if __name__ == "__main__":
     # Load your data here
-    data = pd.read_csv('path_to_your_collision_data.csv')
+    data_path = '../datasets/turbines//detailed_wind_turbine_collisions_test.csv'
+    
+    data = pd.read_csv(data_path)
+    
+    # Simulating the loading of data with a 'BirdSpecies' column for the example
+    # data = pd.DataFrame({
+    #     'Timestamp': pd.date_range(start='2023-01-01', periods=120, freq='D'),
+    #     'Collisions': [i + (i % 10) for i in range(120)],
+    #     'BirdSpecies': ['Hawk' if i % 2 == 0 else 'Sparrow' for i in range(120)]
+    # })
     
     # Specify the column names (time column first)
-    columns = ['Collision_Time']
+    columns = ['Timestamp']
     
     # Initialize the forecasting object with your data and column names
     forecast_arima = CollisionForecastARIMA(data, columns)
@@ -85,10 +92,44 @@ if __name__ == "__main__":
     forecast_arima.fit_model(order=(1, 1, 1))
 
     # Save the model to a file
-    model_filename = 'arima_model.pkl'
-    with open(model_filename, 'wb') as model_file:
-        pickle.dump(model_fit, model_file)
+    model_filename = 'arima_model_forecasting.joblib'
+    model = forecast_arima.load_model(model_filename)
     
     # Forecast future collision counts
     future_collisions = forecast_arima.forecast(steps=10)
     print(future_collisions)
+
+# Plotting historical data and forecasted values
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=forecast_arima.collision_counts.index, y=forecast_arima.collision_counts, mode='lines', name='Historical Data'))
+    forecast_index = pd.date_range(start=forecast_arima.collision_counts.index[-1], periods=11, freq='D')[1:]
+    fig.add_trace(go.Scatter(x=forecast_index, y=future_collisions, mode='lines', name='Forecasted Data'))
+    
+    fig.update_layout(title='Collision Forecast',
+                      xaxis_title='Date',
+                      yaxis_title='Number of Collisions',
+                      xaxis_rangeslider_visible=True)
+    fig.show()
+
+
+
+    # Plotting
+    fig = go.Figure()
+
+    # Plot historical data for each bird species
+    for species in data['Bird_Species'].unique():
+        species_data = data[data['Bird_Species'] == species]
+        species_counts = species_data.groupby(species_data['Timestamp'].dt.date).size()
+        fig.add_trace(go.Scatter(x=species_counts.index, y=species_counts, mode='lines', name=f'{species} - Historical'))
+
+    # Assuming the forecast is aggregated and not per species for simplicity
+    forecast_index = pd.date_range(start=forecast_arima.collision_counts.index[-1], periods=11, freq='D')[1:]
+    fig.add_trace(go.Scatter(x=forecast_index, y=future_collisions, mode='lines+markers', name='Aggregated Forecast'))
+
+    # Update layout
+    fig.update_layout(title='Collision Counts and Forecast by Bird Species',
+                    xaxis_title='Date',
+                    yaxis_title='Number of Collisions',
+                    xaxis_rangeslider_visible=True)
+
+    fig.show()
