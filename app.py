@@ -340,7 +340,8 @@ def load_forecast(_):
             x=forecast_df['Date'],
             y=forecast_df['Forecasted_Collisions'],
             mode='lines+markers',
-            name='Forecasted Collisions'
+            name='Forecasted Collisions',
+            showlegend=True  # Ensure the legend is shown
         ))
         figure.update_layout(title='Forecasted Bird-Turbine Collisions')
 
