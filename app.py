@@ -312,40 +312,64 @@ def make_line_chart(dff):
     return fig
 
 def load_forecast(_):
+    print("in load forecast")
     # Load the fitted model
     try:
-        filename = 'arima_model_2.pkl'
-        collisionForecastARIMA = CollisionForecastARIMA()
-        model = collisionForecastARIMA.load_model(filename)
-        if model is not None:
-            print('Model loaded successfully.')
-            # Proceed with using the model for forecasting as before
-            # Assuming your forecasting and plotting code follows here
-        else:
-            print('Failed to load the model.')
-            # Handle the case where the model wasn't loaded properly
+        data_path = 'datasets/turbines/detailed_wind_turbine_collisions_test.csv'
+    
+        data = pd.read_csv(data_path)
+        
+        # Simulating the loading of data with a 'BirdSpecies' column for the example
+        data = pd.DataFrame({
+            'Timestamp': pd.date_range(start='2023-01-01', periods=120, freq='D'),
+            'Collisions': [i + (i % 10) for i in range(120)],
+            'BirdSpecies': ['Hawk' if i % 2 == 0 else 'Sparrow' for i in range(120)]
+        })
+        
+        # Specify the column names (time column first)
+        columns = ['Timestamp']
+        
+        # Initialize the forecasting object with your data and column names
+        forecast_arima = CollisionForecastARIMA(data, columns)
+        
+        # Prepare the data
+        #forecast_arima.prepare_data()
+        
+        # Fit the ARIMA model
+        #forecast_arima.fit_model(order=(1, 1, 1))
+        
+        model_filename = 'arima_model_forecasting.joblib'
+        #forecast_arima.save_model(model_filename)
+
+        # Save the model to a file
+        print("before model load")
+        model = forecast_arima.load_model(model_filename)
+        
         # Forecast future collision counts
         future_collisions = model.forecast(steps=10)
         print(future_collisions)
-        print("after forecasting")
-        # Convert forecast to a DataFrame for plotting
-        forecast_df = pd.DataFrame({
-            'Date': pd.date_range(start=pd.Timestamp('today'), periods=10, freq='D'),
-            'Forecasted_Collisions': future_collisions
-        })
 
-        # Create the line chart using Plotly
-        figure = go.Figure()
-        figure.add_trace(go.Scatter(
-            x=forecast_df['Date'],
-            y=forecast_df['Forecasted_Collisions'],
-            mode='lines+markers',
-            name='Forecasted Collisions',
-            showlegend=True  # Ensure the legend is shown
-        ))
-        figure.update_layout(title='Forecasted Bird-Turbine Collisions')
+    # Plotting historical data and forecasted values
+        fig = go.Figure()
+        # Plot historical data for each bird species
+        for species in data['BirdSpecies'].unique():
+            species_data = data[data['BirdSpecies'] == species]
+            # Group by date and count collisions
+            species_counts = species_data.groupby(species_data['Timestamp'].dt.date).size()
+            fig.add_trace(go.Scatter(x=species_counts.index, y=species_counts, mode='lines', name=f'{species} - Historical'))
 
-        return figure, 'Model loaded and forecast generated successfully.'
+        # Add the aggregated forecast data
+        # Assuming future_collisions is a Series with datetime index and collision counts
+        forecast_index = future_collisions.index
+        fig.add_trace(go.Scatter(x=forecast_index, y=future_collisions, mode='lines+markers', name='Aggregated Forecast', line=dict(dash='dot')))
+
+        # Update layout
+        fig.update_layout(title='Collision Counts and Forecast by Bird Species',
+                        xaxis_title='Date',
+                        yaxis_title='Number of Collisions',
+                        xaxis_rangeslider_visible=True)
+
+        return fig, 'Model loaded and forecast generated successfully.'
     except FileNotFoundError:
         return go.Figure(), 'Model file not found. Please fit the model first.'
 
