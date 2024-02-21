@@ -367,7 +367,12 @@ def load_forecast(_):
         fig.update_layout(title='Collision Counts and Forecast by Bird Species',
                         xaxis_title='Date',
                         yaxis_title='Number of Collisions',
-                        xaxis_rangeslider_visible=True)
+                        xaxis_rangeslider_visible=True,
+                        showlegend=True,
+                        template="none")
+        
+        
+
 
         return fig, 'Model loaded and forecast generated successfully.'
     except FileNotFoundError:
