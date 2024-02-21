@@ -11,7 +11,7 @@ import dash_leaflet as dl
 from dash import Dash, html, Output, Input, dcc
 import dash_bootstrap_components as dbc
 import pandas as pd
-from scripts.ai_data_dispatcher import AIDataDispatcher
+#from scripts.ai_data_dispatcher import AIDataDispatcher
 from scripts.randomforest import RandomForest
 import os
 from sklearn.preprocessing import LabelEncoder
@@ -20,7 +20,10 @@ import dash
 import dash_core_components as dcc
 import dash_html_components as html
 from dash.dependencies import Input, Output
+from scripts.collisionforecastarima import CollisionForecastARIMA
+import warnings
 
+warnings.filterwarnings("ignore")
 
 app = Dash(
     __name__,
@@ -221,6 +224,9 @@ def make_map():
 Figures
 """
 
+
+
+
 def make_pie(slider_input, title):
     fig = go.Figure(
         data=[
@@ -305,6 +311,42 @@ def make_line_chart(dff):
     )
     return fig
 
+def load_forecast(_):
+    # Load the fitted model
+    try:
+        filename = 'arima_model_2.pkl'
+        collisionForecastARIMA = CollisionForecastARIMA()
+        model = collisionForecastARIMA.load_model(filename)
+        if model is not None:
+            print('Model loaded successfully.')
+            # Proceed with using the model for forecasting as before
+            # Assuming your forecasting and plotting code follows here
+        else:
+            print('Failed to load the model.')
+            # Handle the case where the model wasn't loaded properly
+        # Forecast future collision counts
+        future_collisions = model.forecast(steps=10)
+        print(future_collisions)
+        print("after forecasting")
+        # Convert forecast to a DataFrame for plotting
+        forecast_df = pd.DataFrame({
+            'Date': pd.date_range(start=pd.Timestamp('today'), periods=10, freq='D'),
+            'Forecasted_Collisions': future_collisions
+        })
+
+        # Create the line chart using Plotly
+        figure = go.Figure()
+        figure.add_trace(go.Scatter(
+            x=forecast_df['Date'],
+            y=forecast_df['Forecasted_Collisions'],
+            mode='lines+markers',
+            name='Forecasted Collisions'
+        ))
+        figure.update_layout(title='Forecasted Bird-Turbine Collisions')
+
+        return figure, 'Model loaded and forecast generated successfully.'
+    except FileNotFoundError:
+        return go.Figure(), 'Model file not found. Please fit the model first.'
 
 """
 ==========================================================================
@@ -483,6 +525,18 @@ input_groups = html.Div(
     className="mt-4 p-4",
 )
 
+# ===== Model Train Tab Components
+
+model_training_card = dbc.Card(
+    [
+        dbc.CardHeader("Model Training"),
+        html.Button('Train Random Forest Model', id='train-button-random-forest', n_clicks=0),
+        html.Button('Train Forecasting Model', id='train-button-forecast', n_clicks=0),
+        html.Div(id='train-status'),
+        html.Div(id='model-status')
+    ],
+    className="mt-4",
+)
 
 # =====  Results Tab components
 
@@ -525,6 +579,7 @@ tabs = dbc.Tabs(
             className="pb-4",
         ),
         dbc.Tab([results_card, data_source_card], tab_id="tab-3", label="Results"),
+        dbc.Tab([model_training_card], tab_id="tab-4", label="Training")
     ],
     id="tabs",
     active_tab="tab-2",
@@ -654,8 +709,11 @@ app.layout = dbc.Container(
                         html.H6(datasource_text, className="my-2"),
                         html.Div(id="prediction-output"),
                         html.Div(id='coords-json', style={'display': 'none'}),
-                        html.Button('Train Model', id='train-button', n_clicks=0),
-                        html.Div(id='output-container-button')
+                        html.Div(id='output-container-button'),
+                        #html.Button('Fit Model', id='fit-model-button', n_clicks=0),
+                        #html.Button('Forecast', id='forecast-button', n_clicks=0, disabled=True),  # Initially disabled
+                        html.Button('Load Forecast', id='load-forecast-btn'),
+                        dcc.Graph(id='forecast-graph')
                     ],
                     width=12,
                     lg=7,
@@ -674,7 +732,6 @@ app.layout = dbc.Container(
 ==========================================================================
 Callbacks
 """
-
 
 @app.callback(
     Output("allocation_pie_chart", "figure"),
@@ -871,7 +928,7 @@ def trigger_action_and_predict(n_clicks, geojson, json_coords):
 
 @app.callback(
     Output('output-container-button', 'children'),
-    Input('train-button', 'n_clicks')
+    Input('train-button-random-forest', 'n_clicks')
 )
 def btn_TrainModel(n_clicks):
     if n_clicks > 0:
@@ -1001,6 +1058,63 @@ def display_coords(geojson):
     json_coords = df_coords.to_json(orient='split')
     return table, json_coords
 
+@app.callback(
+    Output('forecast-graph', 'figure', allow_duplicate=True),
+    Output('model-status', 'children'),
+    Input('model-status', 'children'),  # A dummy Input to trigger the page load callback
+    prevent_initial_call=True
+)
+def update_graph_on_load(_):
+    # Call the load_forecast function to get the figure
+    figure, status_message = load_forecast(_)
+    return figure, status_message
+
+@app.callback(
+    Output('train-status', 'children'),
+    Input('train-button-forecast', 'n_clicks'),
+    prevent_initial_call=True
+)
+def train_arima_model(n_clicks):
+    # Replace the following path with the path to your dataset
+    data_path = 'datasets/turbines/detailed_wind_turbine_collisions_test.csv'
+    if n_clicks > 0:
+        # Load your dataset
+        data = pd.read_csv(data_path)
+        
+        # Specify the column names (time column first)
+        columns = ['Timestamp']
+        
+        # Initialize the forecasting object with your data and column names
+        forecast_arima = CollisionForecastARIMA(data, columns)
+        
+        # Prepare the data
+        forecast_arima.prepare_data()
+        
+        # Fit the ARIMA model (specify the order parameters according to your dataset)
+        forecast_arima.fit_model(order=(1, 1, 1))
+        
+        # Save the model
+        model_filename = 'arima_forecast_arima.joblib'
+        forecast_arima.save_model(model_filename)
+        print(f"Model saved to {model_filename}")
+        
+        return 'Model trained and saved successfully.'
+    else:
+        # Button has not been clicked, do not update anything
+        raise PreventUpdate
+    
+@app.callback(
+    [dash.dependencies.Output('forecast-graph', 'figure', allow_duplicate=True),
+     dash.dependencies.Output('model-status', 'children',  allow_duplicate=True)],
+    [dash.dependencies.Input('load-forecast-btn', 'n_clicks')],
+    prevent_initial_call=True
+)
+def update_forecast(n_clicks):
+    if n_clicks is None:
+        # Prevents the callback from firing on app load
+        return go.Figure(), ''
+    else:
+        return load_forecast(n_clicks)
 
 if __name__ == "__main__":
     app.run_server(debug=True, port=8050)
