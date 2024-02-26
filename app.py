@@ -1399,6 +1399,13 @@ def trigger_action_and_predict(n_clicks, geojson, json_coords):
     if n_clicks is None or not geojson:
         raise PreventUpdate
     
+    
+    
+    
+    
+     # Check if json_coords is effectively empty to prevent unnecessary processing
+    if not json_coords or json_coords == "null" or json_coords == "{}":
+        return "No coordinates available", json_coords  # Return early if no data
     # Convert JSON back to DataFrame
     df_coords = pd.read_json(json_coords, orient='split')
     #print("trigger_action_and_predict", df_coords)
@@ -1406,6 +1413,8 @@ def trigger_action_and_predict(n_clicks, geojson, json_coords):
     # Initialize your RandomForest and model
     randomForest = RandomForest()
     model = randomForest.load_model('random_forest_model.joblib')
+    
+    
     
     
     #print("before predict_with_location")
