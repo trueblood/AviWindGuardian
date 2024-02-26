@@ -1727,8 +1727,10 @@ def update_forecast_plot(forecast_period_slider_value, start_year_slider_value, 
         if coords_json and coords_json != "null":
             print("in coords_json and coords_json")
             new_points_df = pd.read_json(coords_json, orient='split')
+            new_points_df['Prediction'].replace('N/A', np.nan, inplace=True)
             print("new points", new_points_df)
             today_date = datetime.today().strftime('%Y-%m-%d')
+            #new_points_df['Prediction'] = pd.to_numeric(new_points_df['Prediction'], errors='coerce')
             additional_collisions = new_points_df['Prediction'].sum()
             
             # Convert 'ds' column to datetime for comparison
@@ -1740,6 +1742,7 @@ def update_forecast_plot(forecast_period_slider_value, start_year_slider_value, 
                 print("in if")
                 aggregated_data.loc[aggregated_data['ds'] == pd.to_datetime(today_date), 'y'] += additional_collisions
                 print("added new collision points to existing date")
+                
             else:
                 print("in else")
                 new_row = {'ds': pd.to_datetime(today_date), 'y': additional_collisions}
