@@ -764,16 +764,41 @@ def make_coords_table(coords):
 
 slider_card_forecast = dbc.Card(
     [
-        html.H4("Adjust Forecast Period (Days):", className="card-title"),
-        dcc.Slider(
-            id="forecast-period-slider",
-            marks={i: f"{i} days" for i in range(0, 366, 30)},  # Adjust based on your needs
-            min=0,
-            max=365,
-            step=1,
-            value=90,  # Default to 90 days
-            included=False,
-        ),
+        html.H4("Adjust Forecast Parameters:", className="card-title"),
+        html.Div([
+            dbc.Card(
+                [
+                    html.H5("Forecast Period (Days):", className="card-title"),
+                    dcc.Slider(
+                        id="forecast-period-slider",
+                        marks={i: f"{i} days" for i in range(0, 366, 30)},  # Adjust based on your needs
+                        min=0,
+                        max=365,
+                        step=1,
+                        value=90,  # Default to 90 days
+                        included=False,
+                    ),
+                ],
+                body=True,
+                className="mt-2",
+            ),
+            dbc.Card(
+                [
+                    html.H5("Select Start Year:", className="card-title"),
+                    dcc.Slider(
+                        id="start-year-slider",
+                        marks={i: str(i) for i in range(2011, 2023)},  # Example range
+                        min=2011,
+                        max=2022,
+                        step=1,
+                        value=2011,  # Default to 2021
+                        included=False,
+                    ),
+                ],
+                body=True,
+                className="mt-4",
+            ),
+        ]),
     ],
     body=True,
     className="mt-4",
@@ -1160,7 +1185,7 @@ app.layout = dbc.Container(
                         html.Div([
                             make_map()  # Call the function to create the map
                         ]),
-                        dcc.Graph(id='forecast-graph', className="pb-4"),
+                        dcc.Graph(id='forecast-graph', className="pb-4", figure=load_forecast(1)[0]),
                         dcc.Graph(id="allocation_pie_chart", className="mb-2"),
                         dcc.Graph(id="returns_chart", className="pb-4"),
                         html.Hr(),
@@ -1171,7 +1196,13 @@ app.layout = dbc.Container(
                         html.Div(id='output-container-button'),
                         #html.Button('Fit Model', id='fit-model-button', n_clicks=0),
                         #html.Button('Forecast', id='forecast-button', n_clicks=0, disabled=True),  # Initially disabled
-                        html.Button('Load Forecast', id='load-forecast-btn')
+                        html.Button('Load Forecast', id='load-forecast-btn'),
+                        dcc.Interval(
+                            id='init-trigger',
+                            interval=1,  # in milliseconds
+                            n_intervals=0,
+                            max_intervals=1  # Stop after the first call
+                        )
                     ],
                     width=12,
                     lg=7,
@@ -1582,61 +1613,110 @@ def update_forecast(n_clicks):
     else:
         return load_forecast(n_clicks)
 
+# @app.callback(
+#     Output('forecast-graph', 'figure'),  # ID of the graph to update
+#     [Input('forecast-period-slider', 'value')]  # ID of the slider component and property to listen to
+# )
+# def update_forecast_plot(forecast_period_slider_value):
+#     try:
+#         # Load the detailed collision data
+#         detailed_collisions_path = 'exported_data.csv'
+#         detailed_collisions_df = pd.read_csv(detailed_collisions_path)
+
+#         # Load the wind turbine location data
+#         wind_turbines_path = 'datasets/turbines/wind_turbines_with_collisions.csv'
+#         wind_turbines_df = pd.read_csv(wind_turbines_path)
+
+#         # Merge the datasets on longitude and latitude
+#         merged_df = pd.merge(detailed_collisions_df, wind_turbines_df, 
+#                              left_on=['Turbine_Longitude', 'Turbine_Latitude'], 
+#                              right_on=['xlong', 'ylat'], 
+#                              how='inner')
+
+#         # Convert 'Timestamp' to datetime
+#         merged_df['Timestamp'] = pd.to_datetime(merged_df['Timestamp'], errors='coerce')
+
+#         # Aggregate collision counts by date for the merged dataset
+#         aggregated_data = merged_df.resample('D', on='Timestamp').agg({'collision': 'sum'}).reset_index()
+#         aggregated_data.rename(columns={'Timestamp': 'ds', 'collision': 'y'}, inplace=True)
+
+#         # Initialize and fit the Prophet model
+#         model = Prophet()
+#         model.fit(aggregated_data)
+
+#         # Adjust the forecast period based on the slider's value
+#         future_dates = model.make_future_dataframe(periods=forecast_period_slider_value)
+
+#         # Predict the values for future dates
+#         forecast = model.predict(future_dates)
+
+#         # Create a figure to plot the forecast
+#         fig = go.Figure()
+
+#         # Plot the historical aggregated collision counts
+#         fig.add_trace(go.Scatter(x=aggregated_data['ds'], y=aggregated_data['y'], mode='lines', name='Historical Aggregated Collisions'))
+
+#         # Add the forecasted data
+#         fig.add_trace(go.Scatter(x=forecast['ds'], y=forecast['yhat'], mode='lines+markers', name='Forecasted Collisions', line=dict(dash='dot')))
+
+#         # Update plot layout
+#         fig.update_layout(
+#             title='Aggregated Collision Counts and Forecast',
+#             xaxis_title='Date',
+#             yaxis_title='Number of Collisions',
+#             xaxis_rangeslider_visible=True,
+#             showlegend=True,
+#             template="none"
+#         )
+
+#         return fig
+#     except FileNotFoundError as e:
+#         print(e)
+#         return go.Figure(), 'Required file not found. Please check the file paths.'
+from dash.dependencies import Input, Output
+
 @app.callback(
-    Output('forecast-graph', 'figure'),  # ID of the graph to update
-    [Input('forecast-period-slider', 'value')]  # ID of the slider component and property to listen to
+    Output('forecast-graph', 'figure'),
+    [Input('forecast-period-slider', 'value'),
+     Input('start-year-slider', 'value'),
+     Input('init-trigger', 'n_intervals')]
 )
-def update_forecast_plot(forecast_period_slider_value):
+def update_forecast_plot(forecast_period_slider_value, start_year_slider_value, n):
     try:
-        # Load the detailed collision data
+        # Load and prepare your datasets
         detailed_collisions_path = 'exported_data.csv'
-        detailed_collisions_df = pd.read_csv(detailed_collisions_path)
-
-        # Load the wind turbine location data
         wind_turbines_path = 'datasets/turbines/wind_turbines_with_collisions.csv'
+        detailed_collisions_df = pd.read_csv(detailed_collisions_path)
         wind_turbines_df = pd.read_csv(wind_turbines_path)
-
-        # Merge the datasets on longitude and latitude
+        
+        # Merge datasets
         merged_df = pd.merge(detailed_collisions_df, wind_turbines_df, 
                              left_on=['Turbine_Longitude', 'Turbine_Latitude'], 
                              right_on=['xlong', 'ylat'], 
                              how='inner')
-
-        # Convert 'Timestamp' to datetime
         merged_df['Timestamp'] = pd.to_datetime(merged_df['Timestamp'], errors='coerce')
 
-        # Aggregate collision counts by date for the merged dataset
-        aggregated_data = merged_df.resample('D', on='Timestamp').agg({'collision': 'sum'}).reset_index()
+        # Filter data based on selected start year for demonstration purposes
+        start_date = pd.to_datetime(f"{start_year_slider_value}-01-01")
+        filtered_df = merged_df[merged_df['Timestamp'] >= start_date]
+
+        # Aggregate collision counts by date
+        aggregated_data = filtered_df.resample('D', on='Timestamp').agg({'collision': 'sum'}).reset_index()
         aggregated_data.rename(columns={'Timestamp': 'ds', 'collision': 'y'}, inplace=True)
 
-        # Initialize and fit the Prophet model
+        # Prophet forecasting
         model = Prophet()
         model.fit(aggregated_data)
-
-        # Adjust the forecast period based on the slider's value
         future_dates = model.make_future_dataframe(periods=forecast_period_slider_value)
-
-        # Predict the values for future dates
         forecast = model.predict(future_dates)
 
-        # Create a figure to plot the forecast
+        # Create and update the plot
         fig = go.Figure()
-
-        # Plot the historical aggregated collision counts
         fig.add_trace(go.Scatter(x=aggregated_data['ds'], y=aggregated_data['y'], mode='lines', name='Historical Aggregated Collisions'))
-
-        # Add the forecasted data
         fig.add_trace(go.Scatter(x=forecast['ds'], y=forecast['yhat'], mode='lines+markers', name='Forecasted Collisions', line=dict(dash='dot')))
-
-        # Update plot layout
-        fig.update_layout(
-            title='Aggregated Collision Counts and Forecast',
-            xaxis_title='Date',
-            yaxis_title='Number of Collisions',
-            xaxis_rangeslider_visible=True,
-            showlegend=True,
-            template="none"
-        )
+        fig.update_layout(title='Aggregated Collision Counts and Forecast',
+                          xaxis_title='Date', yaxis_title='Number of Collisions',
+                          xaxis_rangeslider_visible=True, showlegend=True, template="none")
 
         return fig
     except FileNotFoundError as e:
