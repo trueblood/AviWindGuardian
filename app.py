@@ -22,6 +22,8 @@ import dash_html_components as html
 from dash.dependencies import Input, Output
 from scripts.collisionforecastarima import CollisionForecastARIMA
 import warnings
+from datetime import datetime, timedelta
+from prophet import Prophet
 
 warnings.filterwarnings("ignore")
 
@@ -311,72 +313,429 @@ def make_line_chart(dff):
     )
     return fig
 
+# shows all birds combined
+# def load_forecast(_):
+#     print("in load forecast")
+#     # Assuming the ARIMA model and necessary libraries are already imported
+
+#     # Load the fitted model
+#     try:
+#         data_path = 'datasets/turbines/detailed_wind_turbine_collisions_bk.csv'
+#         data = pd.read_csv(data_path)
+
+#         # Ensure 'Timestamp' is in datetime format
+#         data['Timestamp'] = pd.to_datetime(data['Timestamp'], errors='coerce')
+#         columns = ['Timestamp']
+        
+#         # Load the saved model
+#         model_filename = 'arima_model_forecasting.joblib'
+#         forecast_arima = CollisionForecastARIMA(data, columns)
+        
+#         model = forecast_arima.load_model(model_filename)
+        
+#         # Forecast future collision counts
+#         steps = 15
+#         future_collisions = model.forecast(steps=steps)
+        
+#         # Generate a date range for the forecasted data
+#         last_date = data['Timestamp'].max()
+#         forecast_dates = pd.date_range(start=last_date + pd.Timedelta(days=1), periods=steps, freq='D')
+    
+#         # Assign this new datetime index to your forecasted data
+#         future_collisions.index = forecast_dates  # Align forecast with historical data's timeline
+
+#         # Create a figure to plot the data
+#         fig = go.Figure()
+
+#         # Aggregate collision counts per day
+#         data['Date'] = data['Timestamp'].dt.date
+#         aggregate_counts = data.groupby('Date').size()
+
+#         # Plot historical aggregated collision counts
+#         fig.add_trace(go.Scatter(x=aggregate_counts.index, y=aggregate_counts, mode='lines', name='Historical Aggregated Collisions'))
+
+#         # Add the forecasted data
+#         fig.add_trace(go.Scatter(x=forecast_dates, y=future_collisions, mode='lines+markers', name='Forecasted Collisions', line=dict(dash='dot')))
+
+#         # Update plot layout
+#         fig.update_layout(
+#             title='Aggregated Collision Counts and Forecast',
+#             xaxis_title='Date',
+#             yaxis_title='Number of Collisions',
+#             xaxis_rangeslider_visible=True,
+#             showlegend=True,
+#             template="none"
+#         )
+
+#         return fig, 'Model loaded and forecast generated successfully.'
+#     except FileNotFoundError:
+#         return go.Figure(), 'Model file not found. Please fit the model first.'
+
+# shows all birds aggreated 
+# def load_forecast(_):
+#     print("in load forecast")
+#     # Assuming the ARIMA model and necessary libraries are already imported
+
+#     # Load the fitted model
+#     try:
+#         data_path = 'datasets/turbines/detailed_wind_turbine_collisions_bk.csv'
+#         data = pd.read_csv(data_path)
+
+#         # Ensure 'Timestamp' is in datetime format
+#         data['Timestamp'] = pd.to_datetime(data['Timestamp'], errors='coerce')
+#         columns = ['Timestamp']
+#         # Load the saved model (example path, adjust as necessary)
+#         model_filename = 'arima_model_forecasting.joblib'
+#         forecast_arima = CollisionForecastARIMA(data, columns)
+#         # Example: model = load_your_model_function(model_filename)
+#         model = forecast_arima.load_model(model_filename)
+#         # Forecast future collision counts (adjust 'steps' as necessary)
+#         future_collisions = model.forecast(steps=10)
+#         last_date = data['Timestamp'].max()
+#         forecast_dates = pd.date_range(start=last_date + pd.Timedelta(days=1), periods=10, freq='D')
+    
+#         # Now, assign this new datetime index to your forecasted data
+#         future_collisions.index = forecast_dates  # Align forecast with historical data's timeline
+
+#         # Create a figure to plot the data
+#         fig = go.Figure()
+
+#         # Plot historical data for each bird species
+#         for species in data['Species'].unique():
+#             species_data = data[data['Species'] == species]
+#             species_counts = species_data.groupby(species_data['Timestamp'].dt.date).size()
+#             fig.add_trace(go.Scatter(x=species_counts.index, y=species_counts, mode='lines', name=f'{species} - Historical'))
+
+#         # Assuming 'future_collisions' includes a datetime index matching your historical data
+#         # Add the forecasted data
+#         forecast_index = future_collisions.index  # Adjust as necessary
+#         fig.add_trace(go.Scatter(x=forecast_index, y=future_collisions, mode='lines+markers', name='Aggregated Forecast', line=dict(dash='dot')))
+
+#         # Update plot layout
+#         fig.update_layout(
+#             title='Collision Counts and Forecast by Bird Species',
+#             xaxis_title='Date',
+#             yaxis_title='Number of Collisions',
+#             xaxis_rangeslider_visible=True,
+#             showlegend=True,
+#             template="none"
+#         )
+
+#         return fig, 'Model loaded and forecast generated successfully.'
+#     except FileNotFoundError:
+#         return go.Figure(), 'Model file not found. Please fit the model first.'
+
+def parse_custom_date(date_str):
+    print(date_str)
+    try:
+        return datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
+    except ValueError as e:
+        print(f"Failed to parse {date_str}: {e}")
+        return None
+# Meta Prophet aggregated 
 def load_forecast(_):
     print("in load forecast")
-    # Load the fitted model
     try:
-        data_path = 'datasets/turbines/detailed_wind_turbine_collisions_test.csv'
-    
-        data = pd.read_csv(data_path)
+        # Load the detailed collision data
+        detailed_collisions_path = 'exported_data.csv'
+        detailed_collisions_df = pd.read_csv(detailed_collisions_path)
+        print(detailed_collisions_df.head())
+        # Load the wind turbine location data
+        wind_turbines_path = 'datasets/turbines/wind_turbines_with_collisions.csv'
+        wind_turbines_df = pd.read_csv(wind_turbines_path)
+        print(wind_turbines_df.head())
+        # Merge the datasets on longitude and latitude
+        merged_df = pd.merge(detailed_collisions_df, wind_turbines_df, 
+                     left_on=['Turbine_Longitude', 'Turbine_Latitude'], 
+                     right_on=['xlong', 'ylat'], 
+                     how='inner')
         
-        # Simulating the loading of data with a 'BirdSpecies' column for the example
-        data = pd.DataFrame({
-            'Timestamp': pd.date_range(start='2023-01-01', periods=120, freq='D'),
-            'Collisions': [i + (i % 10) for i in range(120)],
-            'BirdSpecies': ['Hawk' if i % 2 == 0 else 'Sparrow' for i in range(120)]
-        })
+        merged_df['Timestamp'] = pd.to_datetime(merged_df['Timestamp'], errors='coerce')
+        # Assuming 'Timestamp' column exists and represents when collisions occurred
+        print(merged_df.head()) 
         
-        # Specify the column names (time column first)
-        columns = ['Timestamp']
+        # Aggregate collision counts by date for the merged dataset
+        aggregated_data = merged_df.resample('D', on='Timestamp').agg({'collision': 'sum'}).reset_index()
+        aggregated_data.rename(columns={'Timestamp': 'ds', 'collision': 'y'}, inplace=True)
         
-        # Initialize the forecasting object with your data and column names
-        forecast_arima = CollisionForecastARIMA(data, columns)
+        # Initialize and fit the Prophet model
+        model = Prophet()
+        model.fit(aggregated_data)
+        print("after prophet fit")
         
-        # Prepare the data
-        #forecast_arima.prepare_data()
+        # Create future dataframe for forecasting (e.g., next 365 days)
+        future_dates = model.make_future_dataframe(periods=365)
         
-        # Fit the ARIMA model
-        #forecast_arima.fit_model(order=(1, 1, 1))
+        # Predict the values for future dates
+        forecast = model.predict(future_dates)
         
-        model_filename = 'arima_model_forecasting.joblib'
-        #forecast_arima.save_model(model_filename)
-
-        # Save the model to a file
-        print("before model load")
-        model = forecast_arima.load_model(model_filename)
-        
-        # Forecast future collision counts
-        future_collisions = model.forecast(steps=10)
-        print(future_collisions)
-
-    # Plotting historical data and forecasted values
+        # Create a figure to plot the forecast
         fig = go.Figure()
-        # Plot historical data for each bird species
-        for species in data['BirdSpecies'].unique():
-            species_data = data[data['BirdSpecies'] == species]
-            # Group by date and count collisions
-            species_counts = species_data.groupby(species_data['Timestamp'].dt.date).size()
-            fig.add_trace(go.Scatter(x=species_counts.index, y=species_counts, mode='lines', name=f'{species} - Historical'))
-
-        # Add the aggregated forecast data
-        # Assuming future_collisions is a Series with datetime index and collision counts
-        forecast_index = future_collisions.index
-        fig.add_trace(go.Scatter(x=forecast_index, y=future_collisions, mode='lines+markers', name='Aggregated Forecast', line=dict(dash='dot')))
-
-        # Update layout
-        fig.update_layout(title='Collision Counts and Forecast by Bird Species',
-                        xaxis_title='Date',
-                        yaxis_title='Number of Collisions',
-                        xaxis_rangeslider_visible=True,
-                        showlegend=True,
-                        template="none")
         
+        # Plot the historical aggregated collision counts
+        fig.add_trace(go.Scatter(x=aggregated_data['ds'], y=aggregated_data['y'], mode='lines', name='Historical Aggregated Collisions'))
         
-
+        # Add the forecasted data
+        fig.add_trace(go.Scatter(x=forecast['ds'], y=forecast['yhat'], mode='lines+markers', name='Forecasted Collisions', line=dict(dash='dot')))
+        
+        # Update plot layout
+        fig.update_layout(
+            title='Aggregated Collision Counts and Forecast',
+            xaxis_title='Date',
+            yaxis_title='Number of Collisions',
+            xaxis_rangeslider_visible=True,
+            showlegend=True,
+            template="none"
+        )
 
         return fig, 'Model loaded and forecast generated successfully.'
-    except FileNotFoundError:
-        return go.Figure(), 'Model file not found. Please fit the model first.'
+    except FileNotFoundError as e:
+        print(e)
+        return go.Figure(), 'Required file not found. Please check the file paths.'
+
+
+# not working
+# def load_forecast(_):
+#     print("in load forecast")
+
+#     try:
+#         data_path = 'datasets/turbines/detailed_wind_turbine_collisions_bk_mod.csv'
+#         data = pd.read_csv(data_path)
+#         #data['Timestamp'] = pd.to_datetime(data['Timestamp'], errors='coerce')
+#         #data['Timestamp'] = pd.to_datetime(data['Timestamp'], format='%d-%m-%Y', errors='coerce')
+#         #data['Timestamp'] = data['Timestamp'].dt.date
+#         #data['Timestamp'] = pd.to_datetime(data['Timestamp'], errors='coerce', infer_datetime_format=True)
+#         #data['Timestamp'] = data['Timestamp'].dt.date
+#         #data['Timestamp'] = data['Timestamp'].apply(lambda x: parse_custom_date(x))    
+#         # Ensure 'Timestamp' is in datetime format
+#         #data['Timestamp'] = pd.to_datetime(data['Timestamp'], errors='coerce', infer_datetime_format=True)
+
+#         # Convert datetime objects to the desired string format 'YYYY-MM-DD HH:MM:SS'
+#        # data['Timestamp'] = data['Timestamp'].dt.strftime('%Y-%m-%d %H:%M:%S')
+
+#         # Display the first few rows to verify the changes
+#         #data.head()
+        
+        
+        
+#         #data.to_csv('exported_data.csv', index=False)
+
+#         print("after lamda")
+#         none_count = data['Timestamp'].isnull().sum()
+#         print(f"Number of None values after custom parsing: {none_count}")
+#         data['Timestamp'] = data['Timestamp'].replace({None: np.nan})
+#         data.to_csv('exported_data.csv', index=False)
+        
+        
+#         columns = ['Timestamp']
+#         print(data['Timestamp'].dtype)
+#         overall_max_timestamp = data['Timestamp'].max()
+#         print(overall_max_timestamp)
+#         print("data loaded", data.head())
+        
+        
+                
+#         model_filename = 'arima_model_forecasting.joblib'
+        
+#         # Initialize a figure for plotting
+#         fig = go.Figure()
+
+#         # Iterate over each bird species to forecast individually
+#         for species in data['Species'].unique():
+#             species_data = data[data['Species'] == species]
+#             # Debugging print: Check if species data is empty
+#             if species_data.empty:
+#                 print(f"No data found for species: {species}")
+#                 continue
+
+#             nat_rows = species_data[species_data['Timestamp'].isna()]
+
+#             if not nat_rows.empty:
+#                 print(f"Found {len(nat_rows)} rows with NaT 'Timestamp' for 'Setophaga striata'.")
+
+#             # If necessary, inspect a few rows to understand the issue
+#             if len(nat_rows) > 0:
+#                 print(nat_rows.head())
+
+#             # Further debugging to confirm 'Timestamp' conversion
+#             print(f"Data available for {species}: {len(species_data)} records")
+#             last_date = species_data['Timestamp'].max()
+#             print(f"Last date for {species}: {last_date}")  # Debugging print
+            
+#             if not species_data.empty:
+#                 print(f"Species data for {species} is not empty.")
+#                 species_max_timestamp = species_data['Timestamp'].max()
+#                 print(species_max_timestamp)
+#                 species_data['Timestamp'] = pd.to_datetime(species_data['Timestamp'], errors='coerce')
+#                 print("before overall_max_timestamp")
+#                 #overall_max_timestamp = data['Timestamp'].max()
+#                 print("after overall_max_timestamp")
+                
+                
+                
+                                
+                
+#                 # Convert the strings to datetime objects
+#                 datetime1 = datetime.strptime(species_max_timestamp, '%Y/%m/%d %H:%M:%S')
+#                 datetime2 = datetime.strptime(overall_max_timestamp, '%Y/%m/%d %H:%M:%S')
+
+#                 # Get the date part of each datetime
+#                 date1 = datetime1.date()
+#                 print(date1)
+#                 date2 = datetime2.date()
+#                 print(date2)
+
+#                 # Subtract the two dates
+#                 date_diff = date2 - date1
+
+#                 print(date_diff)
+#                 days_to_forecast = date_diff.days + 10 
+#                 print("days to forecast", days_to_forecast)
+                
+                
+                
+                
+                
+#                 #species_max_timestamp = pd.to_datetime(species_max_timestamp)
+#                 #print(overall_max_timestamp)
+#                 #print(species_max_timestamp)
+#                 #time_difference = overall_max_timestamp - species_max_timestamp
+#                 #print("time difference", time_difference)
+#                 #days_to_forecast = time_difference.days + 10 
+#                 #print(days_to_forecast)
+
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+#                 # Initialize the forecasting object for this species
+#                 #forecast_arima = CollisionForecastARIMA(species_data, columns)
+#                 forecast_arima = CollisionForecastARIMA(species_data, ['Timestamp'])
+
+#                 # Load the model for this species
+#                 model = forecast_arima.load_model(model_filename)
+#                 print("model loaded")
+#                 # Perform forecasting for this species
+#                # Perform forecasting for this species
+#                 future_collisions = model.forecast(steps=days_to_forecast)
+#                 print("after future_collisions", future_collisions)
+
+#                 # Manually create a list of forecast dates
+#                 forecast_dates_list = [species_max_timestamp + pd.Timedelta(days=i+1) for i in range(days_to_forecast)]
+
+#                 # Convert the list to a pandas DatetimeIndex
+#                 forecast_dates_index = pd.DatetimeIndex(forecast_dates_list)
+#                 print("after forecast_dates", forecast_dates_index)
+
+#                 # Assign the forecast dates index to the future_collisions Series or DataFrame
+#                 future_collisions.index = forecast_dates_index
+#                 print("future_collisions indexed", future_collisions)
+
+#                 # Group historical data by date and count occurrences for each species
+#                 species_counts = species_data.groupby(species_data['Timestamp'].dt.date).size()
+#                 print(species_counts)
+
+#                 # Plot historical data for this species
+#                 fig.add_trace(go.Scatter(x=species_counts.index, y=species_counts, mode='lines', name=f'{species} - Historical'))
+
+#                 # Plot forecasted data using the manually created forecast dates
+#                 fig.add_trace(go.Scatter(x=forecast_dates_index, y=future_collisions, mode='lines+markers', name=f'{species} - Forecast', line=dict(dash='dot')))
+
+#         # Update plot layout
+#         fig.update_layout(
+#             title='Collision Counts and Forecast by Bird Species',
+#             xaxis_title='Date',
+#             yaxis_title='Number of Collisions',
+#             xaxis_rangeslider_visible=True,
+#             showlegend=True,
+#             template="none"
+#         )
+
+#         return fig, 'Model loaded and forecast generated successfully for each species.'
+#     except FileNotFoundError:
+#         return go.Figure(), 'Model file not found. Please fit the model first.'
+
+
+# not used, original 
+# def load_forecast(_):
+#     print("in load forecast")
+#     # Load the fitted model
+#     try:
+#         data_path = 'datasets/turbines//detailed_wind_turbine_collisions_bk.csv'
+    
+#         data = pd.read_csv(data_path)
+#         print("data loaded", data.head())
+        
+#         # Simulating the loading of data with a 'BirdSpecies' column for the example
+#         #data = pd.DataFrame({
+#         ##    'Timestamp': pd.date_range(start='2023-01-01', periods=120, freq='D'),
+#         #    'Collisions': [i + (i % 10) for i in range(120)],
+#         #    'BirdSpecies': ['Hawk' if i % 2 == 0 else 'Sparrow' for i in range(120)]
+#         #})
+        
+#         # Specify the column names (time column first)
+#         columns = ['Timestamp']
+        
+#         # Initialize the forecasting object with your data and column names
+#         forecast_arima = CollisionForecastARIMA(data, columns)
+        
+#         # Prepare the data
+#         #forecast_arima.prepare_data()
+        
+#         # Fit the ARIMA model
+#         #forecast_arima.fit_model(order=(1, 1, 1))
+        
+#         model_filename = 'arima_model_forecasting.joblib'
+#         #forecast_arima.save_model(model_filename)
+
+#         # Save the model to a file
+#         print("before model load")
+#         model = forecast_arima.load_model(model_filename)
+        
+#         # Forecast future collision counts
+#         future_collisions = model.forecast(steps=10)
+#         print(future_collisions)
+
+#     # Plotting historical data and forecasted values
+#         fig = go.Figure()
+#         # Plot historical data for each bird species
+#         for species in data['Species'].unique():
+#             species_data = data[data['Species'] == species]
+#             # Group by date and count collisions
+#             species_data['Timestamp'] = pd.to_datetime(species_data['Timestamp'], errors='coerce')
+#             species_counts = species_data.groupby(species_data['Timestamp'].dt.date).size()
+#             fig.add_trace(go.Scatter(x=species_counts.index, y=species_counts, mode='lines', name=f'{species} - Historical'))
+
+#         # Add the aggregated forecast data
+#         # Assuming future_collisions is a Series with datetime index and collision counts
+#         forecast_index = future_collisions.index
+#         fig.add_trace(go.Scatter(x=forecast_index, y=future_collisions, mode='lines+markers', name='Aggregated Forecast', line=dict(dash='dot')))
+
+#         # Update layout
+#         fig.update_layout(title='Collision Counts and Forecast by Bird Species',
+#                         xaxis_title='Date',
+#                         yaxis_title='Number of Collisions',
+#                         xaxis_rangeslider_visible=True,
+#                         showlegend=True,
+#                         template="none")
+        
+        
+
+
+#         return fig, 'Model loaded and forecast generat  ed successfully.'
+#     except FileNotFoundError:
+#         return go.Figure(), 'Model file not found. Please fit the model first.'
+
+
 
 """
 ==========================================================================
@@ -401,6 +760,25 @@ def make_coords_table(coords):
     """Generate an HTML table based on coordinates."""
     df_table = pd.DataFrame(coords, columns=["Latitude", "Longitude"])
     return dbc.Table.from_dataframe(df_table, striped=True, bordered=True, hover=True)
+
+
+slider_card_forecast = dbc.Card(
+    [
+        html.H4("Adjust Forecast Period (Days):", className="card-title"),
+        dcc.Slider(
+            id="forecast-period-slider",
+            marks={i: f"{i} days" for i in range(0, 366, 30)},  # Adjust based on your needs
+            min=0,
+            max=365,
+            step=1,
+            value=90,  # Default to 90 days
+            included=False,
+        ),
+    ],
+    body=True,
+    className="mt-4",
+)
+
 
 
 
@@ -487,6 +865,56 @@ time_period_card = dbc.Card(
     body=True,
     className="mt-4",
 )
+
+time_period_cords_data = [
+    {
+        "label": f"2007-2008: Great Financial Crisis to {MAX_YR}",
+        "start_yr": 2007,
+        "planning_time": MAX_YR - START_YR + 1,
+    },
+    {
+        "label": "1999-2010: The decade including 2000 Dotcom Bubble peak",
+        "start_yr": 1999,
+        "planning_time": 10,
+    },
+    {
+        "label": "1969-1979:  The 1970s Energy Crisis",
+        "start_yr": 1970,
+        "planning_time": 10,
+    },
+    {
+        "label": "1929-1948:  The 20 years following the start of the Great Depression",
+        "start_yr": 1929,
+        "planning_time": 20,
+    },
+    {
+        "label": f"{MIN_YR}-{MAX_YR}",
+        "start_yr": "1928",
+        "planning_time": MAX_YR - MIN_YR + 1,
+    },
+]
+
+
+time_period_cords_card = dbc.Card(
+    [
+        html.H4(
+            "Or select a time period:",
+            className="card-title",
+        ),
+        dbc.RadioItems(
+            id="time_period",
+            options=[
+                {"label": period["label"], "value": i}
+                for i, period in enumerate(time_period_data)
+            ],
+            value=0,
+            labelClassName="mb-2",
+        ),
+    ],
+    body=True,
+    className="mt-4",
+)
+
 
 # ======= InputGroup components
 
@@ -603,7 +1031,7 @@ tabs = dbc.Tabs(
     [
         dbc.Tab(learn_card, tab_id="tab1", label="Learn"),
         dbc.Tab(
-            [cords_card, slider_card, input_groups, time_period_card],
+            [cords_card, slider_card_forecast, slider_card, input_groups, time_period_card],
             tab_id="tab-2",
             label="Play",
             className="pb-4",
@@ -732,6 +1160,7 @@ app.layout = dbc.Container(
                         html.Div([
                             make_map()  # Call the function to create the map
                         ]),
+                        dcc.Graph(id='forecast-graph', className="pb-4"),
                         dcc.Graph(id="allocation_pie_chart", className="mb-2"),
                         dcc.Graph(id="returns_chart", className="pb-4"),
                         html.Hr(),
@@ -742,8 +1171,7 @@ app.layout = dbc.Container(
                         html.Div(id='output-container-button'),
                         #html.Button('Fit Model', id='fit-model-button', n_clicks=0),
                         #html.Button('Forecast', id='forecast-button', n_clicks=0, disabled=True),  # Initially disabled
-                        html.Button('Load Forecast', id='load-forecast-btn'),
-                        dcc.Graph(id='forecast-graph')
+                        html.Button('Load Forecast', id='load-forecast-btn')
                     ],
                     width=12,
                     lg=7,
@@ -839,6 +1267,7 @@ def update_time_period(planning_time, start_yr, period_number):
     Input("start_yr", "value"),
 )
 def update_totals(stocks, cash, start_bal, planning_time, start_yr):
+    print("in update_totals")
     # set defaults for invalid inputs
     start_bal = 10 if start_bal is None else start_bal
     planning_time = 1 if planning_time is None else planning_time
@@ -858,6 +1287,9 @@ def update_totals(stocks, cash, start_bal, planning_time, start_yr):
 
     # create the line chart
     fig = make_line_chart(dff)
+    
+    
+    #fig = load_forecast()
 
     summary_table = make_summary_table(dff)
 
@@ -866,7 +1298,7 @@ def update_totals(stocks, cash, start_bal, planning_time, start_yr):
 
     # calcluate cagr
     ending_cagr = cagr(dff["Total"])
-
+    
     return data, fig, summary_table, ending_amount, ending_cagr
 
 # Trigger mode (draw marker).
@@ -892,7 +1324,7 @@ def trigger_action(n_clicks):
     # Return update for edit control toolbar, empty children for coords-display-container, and empty JSON
     return dict(mode="remove", action="clear all", n_clicks=n_clicks), None, "{}"
 
-# Helper function to convert GeoJSON to DataFrame
+# Helper function to convert GeoJSON to DataFrame 
 def convert_geojson_to_dataframe(geojson):
     # Check if the GeoJSON contains any features
     if 'features' not in geojson or len(geojson['features']) == 0:
@@ -1095,6 +1527,7 @@ def display_coords(geojson):
     prevent_initial_call=True
 )
 def update_graph_on_load(_):
+    print("in update_graph_on_load")
     # Call the load_forecast function to get the figure
     figure, status_message = load_forecast(_)
     return figure, status_message
@@ -1105,12 +1538,15 @@ def update_graph_on_load(_):
     prevent_initial_call=True
 )
 def train_arima_model(n_clicks):
+    print("in train arima model")
     # Replace the following path with the path to your dataset
-    data_path = 'datasets/turbines/detailed_wind_turbine_collisions_test.csv'
+    data_path = 'datasets/turbines/detailed_wind_turbine_collisions_bk.csv'
     if n_clicks > 0:
         # Load your dataset
         data = pd.read_csv(data_path)
         
+        data['Timestamp'] = pd.to_datetime(data['Timestamp'], errors='coerce')
+        print(data)
         # Specify the column names (time column first)
         columns = ['Timestamp']
         
@@ -1145,6 +1581,68 @@ def update_forecast(n_clicks):
         return go.Figure(), ''
     else:
         return load_forecast(n_clicks)
+
+@app.callback(
+    Output('forecast-graph', 'figure'),  # ID of the graph to update
+    [Input('forecast-period-slider', 'value')]  # ID of the slider component and property to listen to
+)
+def update_forecast_plot(forecast_period_slider_value):
+    try:
+        # Load the detailed collision data
+        detailed_collisions_path = 'exported_data.csv'
+        detailed_collisions_df = pd.read_csv(detailed_collisions_path)
+
+        # Load the wind turbine location data
+        wind_turbines_path = 'datasets/turbines/wind_turbines_with_collisions.csv'
+        wind_turbines_df = pd.read_csv(wind_turbines_path)
+
+        # Merge the datasets on longitude and latitude
+        merged_df = pd.merge(detailed_collisions_df, wind_turbines_df, 
+                             left_on=['Turbine_Longitude', 'Turbine_Latitude'], 
+                             right_on=['xlong', 'ylat'], 
+                             how='inner')
+
+        # Convert 'Timestamp' to datetime
+        merged_df['Timestamp'] = pd.to_datetime(merged_df['Timestamp'], errors='coerce')
+
+        # Aggregate collision counts by date for the merged dataset
+        aggregated_data = merged_df.resample('D', on='Timestamp').agg({'collision': 'sum'}).reset_index()
+        aggregated_data.rename(columns={'Timestamp': 'ds', 'collision': 'y'}, inplace=True)
+
+        # Initialize and fit the Prophet model
+        model = Prophet()
+        model.fit(aggregated_data)
+
+        # Adjust the forecast period based on the slider's value
+        future_dates = model.make_future_dataframe(periods=forecast_period_slider_value)
+
+        # Predict the values for future dates
+        forecast = model.predict(future_dates)
+
+        # Create a figure to plot the forecast
+        fig = go.Figure()
+
+        # Plot the historical aggregated collision counts
+        fig.add_trace(go.Scatter(x=aggregated_data['ds'], y=aggregated_data['y'], mode='lines', name='Historical Aggregated Collisions'))
+
+        # Add the forecasted data
+        fig.add_trace(go.Scatter(x=forecast['ds'], y=forecast['yhat'], mode='lines+markers', name='Forecasted Collisions', line=dict(dash='dot')))
+
+        # Update plot layout
+        fig.update_layout(
+            title='Aggregated Collision Counts and Forecast',
+            xaxis_title='Date',
+            yaxis_title='Number of Collisions',
+            xaxis_rangeslider_visible=True,
+            showlegend=True,
+            template="none"
+        )
+
+        return fig
+    except FileNotFoundError as e:
+        print(e)
+        return go.Figure(), 'Required file not found. Please check the file paths.'
+
 
 if __name__ == "__main__":
     app.run_server(debug=True, port=8050)
