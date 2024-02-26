@@ -426,24 +426,24 @@ def make_line_chart(dff):
 #         return go.Figure(), 'Model file not found. Please fit the model first.'
 
 def parse_custom_date(date_str):
-    print(date_str)
+    #print(date_str)
     try:
         return datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
     except ValueError as e:
-        print(f"Failed to parse {date_str}: {e}")
+        #print(f"Failed to parse {date_str}: {e}")
         return None
 # Meta Prophet aggregated 
 def load_forecast(_):
-    print("in load forecast")
+    #print("in load forecast")
     try:
         # Load the detailed collision data
         detailed_collisions_path = 'exported_data.csv'
         detailed_collisions_df = pd.read_csv(detailed_collisions_path)
-        print(detailed_collisions_df.head())
+        #print(detailed_collisions_df.head())
         # Load the wind turbine location data
         wind_turbines_path = 'datasets/turbines/wind_turbines_with_collisions.csv'
         wind_turbines_df = pd.read_csv(wind_turbines_path)
-        print(wind_turbines_df.head())
+        #print(wind_turbines_df.head())
         # Merge the datasets on longitude and latitude
         merged_df = pd.merge(detailed_collisions_df, wind_turbines_df, 
                      left_on=['Turbine_Longitude', 'Turbine_Latitude'], 
@@ -452,7 +452,7 @@ def load_forecast(_):
         
         merged_df['Timestamp'] = pd.to_datetime(merged_df['Timestamp'], errors='coerce')
         # Assuming 'Timestamp' column exists and represents when collisions occurred
-        print(merged_df.head()) 
+        #print(merged_df.head()) 
         
         # Aggregate collision counts by date for the merged dataset
         aggregated_data = merged_df.resample('D', on='Timestamp').agg({'collision': 'sum'}).reset_index()
@@ -461,7 +461,7 @@ def load_forecast(_):
         # Initialize and fit the Prophet model
         model = Prophet()
         model.fit(aggregated_data)
-        print("after prophet fit")
+        #print("after prophet fit")
         
         # Create future dataframe for forecasting (e.g., next 365 days)
         future_dates = model.make_future_dataframe(periods=365)
@@ -1298,7 +1298,7 @@ def update_time_period(planning_time, start_yr, period_number):
     Input("start_yr", "value"),
 )
 def update_totals(stocks, cash, start_bal, planning_time, start_yr):
-    print("in update_totals")
+    #print("in update_totals")
     # set defaults for invalid inputs
     start_bal = 10 if start_bal is None else start_bal
     planning_time = 1 if planning_time is None else planning_time
@@ -1400,24 +1400,27 @@ def trigger_action_and_predict(n_clicks, geojson, json_coords):
     
     # Convert JSON back to DataFrame
     df_coords = pd.read_json(json_coords, orient='split')
-    print("trigger_action_and_predict", df_coords)
+    #print("trigger_action_and_predict", df_coords)
 
     # Initialize your RandomForest and model
     randomForest = RandomForest()
     model = randomForest.load_model('random_forest_model.joblib')
     
     
-    print("before predict_with_location")
+    #print("before predict_with_location")
     #print(df_coords)
     # Make predictions
     predictions = model.predict_with_location(df_coords)
-    print("after predict_with_location")
+    #print("after predict_with_location")
+    
+     # Convert updated df_coords back to JSON for the Dash component output
+    updated_json_coords = df_coords.to_json(orient='split')
 
     # Format predictions for display (e.g., as a table)
     prediction_output = format_predictions(predictions)
 
     # Here, the old content is "cleared" by replacing it with new content
-    return prediction_output, json_coords
+    return prediction_output, updated_json_coords
 
 @app.callback(
     Output('output-container-button', 'children'),
@@ -1679,9 +1682,18 @@ from dash.dependencies import Input, Output
     Output('forecast-graph', 'figure'),
     [Input('forecast-period-slider', 'value'),
      Input('start-year-slider', 'value'),
-     Input('init-trigger', 'n_intervals')]
+     Input('init-trigger', 'n_intervals'),
+     Input('coords-json', 'children')]
 )
-def update_forecast_plot(forecast_period_slider_value, start_year_slider_value, n):
+def update_forecast_plot(forecast_period_slider_value, start_year_slider_value, n, coords_json):
+    # Check if coords_json is not provided and skip update if so
+    if not coords_json or coords_json == "null":
+        print("No new coordinates provided. Using only historical data.")
+        raise PreventUpdate
+
+    # Print contents of coords_json to console for debugging
+    print(f"Received coords_json contents: {coords_json}")
+    
     try:
         # Load and prepare your datasets
         detailed_collisions_path = 'exported_data.csv'
@@ -1704,11 +1716,41 @@ def update_forecast_plot(forecast_period_slider_value, start_year_slider_value, 
         aggregated_data = filtered_df.resample('D', on='Timestamp').agg({'collision': 'sum'}).reset_index()
         aggregated_data.rename(columns={'Timestamp': 'ds', 'collision': 'y'}, inplace=True)
 
+        # If coords_json is provided, adjust aggregated_data with additional_collisions
+        if coords_json and coords_json != "null":
+            print("in coords_json and coords_json")
+            new_points_df = pd.read_json(coords_json, orient='split')
+            print("new points", new_points_df)
+            today_date = datetime.today().strftime('%Y-%m-%d')
+            additional_collisions = new_points_df['Prediction'].sum()
+            
+            # Convert 'ds' column to datetime for comparison
+            aggregated_data['ds'] = pd.to_datetime(aggregated_data['ds'])
+            #print("after", aggregated_data)
+            print("before if")
+            # Check if today's date exists in 'ds' column and update or append accordingly
+            if pd.to_datetime(today_date) in aggregated_data['ds'].values:
+                print("in if")
+                aggregated_data.loc[aggregated_data['ds'] == pd.to_datetime(today_date), 'y'] += additional_collisions
+                print("added new collision points to existing date")
+            else:
+                print("in else")
+                new_row = {'ds': pd.to_datetime(today_date), 'y': additional_collisions}
+                print("new row", new_row)
+                new_row_df = pd.DataFrame([new_row])
+                aggregated_data = pd.concat([aggregated_data, new_row_df], ignore_index=True)
+                print("added new collision points to existing date")
+
+        print("before getting model")
         # Prophet forecasting
         model = Prophet()
         model.fit(aggregated_data)
+        print("after fitting model")
         future_dates = model.make_future_dataframe(periods=forecast_period_slider_value)
         forecast = model.predict(future_dates)
+
+        newest_date = aggregated_data['ds'].max()
+        print(newest_date)
 
         # Create and update the plot
         fig = go.Figure()
@@ -1717,6 +1759,7 @@ def update_forecast_plot(forecast_period_slider_value, start_year_slider_value, 
         fig.update_layout(title='Aggregated Collision Counts and Forecast',
                           xaxis_title='Date', yaxis_title='Number of Collisions',
                           xaxis_rangeslider_visible=True, showlegend=True, template="none")
+        print("figure updated")
 
         return fig
     except FileNotFoundError as e:
