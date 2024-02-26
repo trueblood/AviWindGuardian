@@ -1384,53 +1384,109 @@ def convert_geojson_to_dataframe(geojson):
 #     return html.Ul([html.Li(f"Longitude: {row['xlong']}, Latitude: {row['ylat']}, Prediction: {row['prediction']}")
 #                     for index, row in predictions_df.iterrows()])
 
-
 @app.callback(
     [
         Output("coords-display-container", "children", allow_duplicate=True),  # Update the display container
         Output("coords-json", "children", allow_duplicate=True)  # Update the JSON data
     ],
-    [Input("submit_cords", "n_clicks")],
-    [State("edit_control", "geojson"),
-     State("coords-json", "children")],
+    [Input("edit_control", "geojson"),  # Listen for changes in geojson
+     Input("submit_cords", "n_clicks")],  # Listen for clicks on the submit button
+    [State("coords-json", "children")],  # Maintain the state of coords-json
     prevent_initial_call=True
 )
-def trigger_action_and_predict(n_clicks, geojson, json_coords):
-    if n_clicks is None or not geojson:
-        raise PreventUpdate
-    
-    
-    
-    
-    
-     # Check if json_coords is effectively empty to prevent unnecessary processing
-    if not json_coords or json_coords == "null" or json_coords == "{}":
-        return "No coordinates available", json_coords  # Return early if no data
-    # Convert JSON back to DataFrame
-    df_coords = pd.read_json(json_coords, orient='split')
-    #print("trigger_action_and_predict", df_coords)
+def trigger_action_and_predict(geojson, n_clicks, json_coords):
+    ctx = dash.callback_context
 
-    # Initialize your RandomForest and model
+    if not ctx.triggered or "features" not in geojson:
+        raise PreventUpdate
+
     randomForest = RandomForest()
     model = randomForest.load_model('random_forest_model.joblib')
     
-    
-    
-    
-    #print("before predict_with_location")
-    #print(df_coords)
-    # Make predictions
-    predictions = model.predict_with_location(df_coords)
-    #print("after predict_with_location")
-    
-     # Convert updated df_coords back to JSON for the Dash component output
+    # Load existing coordinates from json_coords, if any
+    #if json_coords and json_coords != "{}":
+    #    df_coords = pd.read_json(json_coords, orient='split')
+    #else:
+    #    df_coords = pd.DataFrame(columns=["group", "#", "Type", "Latitude", "Longitude", "Prediction"])
+
+    df_coords = pd.DataFrame(columns=["group", "#", "Type", "Latitude", "Longitude", "Prediction"])
+    new_rows = []  # To hold new data from geojson
+
+    for feature in geojson["features"]:
+        geometry = feature.get("geometry")
+        geom_type = geometry.get("type")
+        coords = geometry.get("coordinates")
+
+        if geom_type == "Point" or geom_type == "Polygon":
+            process_geometry(geometry, new_rows)
+
+    # If there are new rows, predict and update df_coords
+    if new_rows:
+        new_df = pd.DataFrame(new_rows)
+        print("New rows from GeoJSON:")
+        #Add an identifier
+        new_df['temp_id'] = range(1, len(new_df) + 1)
+        # Perform prediction for new rows
+        predictions = model.predict_with_location(new_df[["group", "#", "Type", "Latitude", "Longitude", "Prediction"]])
+        print("after predictions", predictions)
+        predictions_df = pd.DataFrame(predictions, columns=['Prediction'])
+        predictions_df['temp_id'] = new_df['temp_id']
+        
+        new_df = pd.merge(new_df, predictions_df, on='temp_id', how='left')
+        new_df.drop('temp_id', axis=1, inplace=True)  # Remove the temporary identifier
+        print("After attaching predictions to new_df", new_df)
+        
+        #new_df['Prediction'] = predictions  # Update the DataFrame with new predictions
+        print("after new_df", new_df)
+        print("before merge", new_df.head())
+        df_coords = pd.concat([df_coords, new_df], ignore_index=True)
+        
+        df_coords['Prediction'] = df_coords['Prediction_y'].combine_first(df_coords['Prediction_x'])
+        
+        df_coords.drop(['Prediction_x', 'Prediction_y'], axis=1, inplace=True)
+
+        #df_coords = pd.concat([df_coords, new_df], ignore_index=True)
+        #df_coords = pd.merge(df_coords, new_df, 
+        #                on=["group", "#", "Type", "Latitude", "Longitude"], 
+        #                how='outer', 
+        #                suffixes=('', '_new'))
+        #print("after merge", df_coords)
+        #df_coords['Prediction'] = df_coords['Prediction_new'].combine_first(df_coords['Prediction'])
+        #df_coords.drop(['Prediction_new'], axis=1, inplace=True)
+        print("Updated df_coords with new predictions", df_coords)
+        
+    print("df_coords", df_coords)
+    # Prepare the table for display
+    table = dbc.Table.from_dataframe(df_coords, striped=True, bordered=True, hover=True)
+    print("after table create")
+
+    # Convert updated df_coords to JSON for transmission
     updated_json_coords = df_coords.to_json(orient='split')
+    print("Here are updated cords", updated_json_coords)
+    return table, updated_json_coords
 
-    # Format predictions for display (e.g., as a table)
-    prediction_output = format_predictions(predictions)
+def process_geometry(geometry, new_rows):
+    geom_type = geometry.get("type")
+    coords = geometry.get("coordinates")
+    if geom_type == "Point":
+        lat, lon = coords[1], coords[0]
+        new_rows.append(create_row(lat, lon, "Point"))
+    elif geom_type == "Polygon":
+        # Process each vertex of the polygon (assuming the first ring for simplicity)
+        for index, coord in enumerate(coords[0]):
+            lat, lon = coord[1], coord[0]
+            label = "Polygon Vertex" if index == 0 else ""
+            new_rows.append(create_row(lat, lon, label))
 
-    # Here, the old content is "cleared" by replacing it with new content
-    return prediction_output, updated_json_coords
+def create_row(lat, lon, label):
+    return {
+        "group": 1,  # Update logic for group assignment as needed
+        "#": 1,  # Update logic for counter as needed
+        "Type": label,
+        "Latitude": lat,
+        "Longitude": lon,
+        "Prediction": "Pending"  # Placeholder for prediction
+    }
 
 @app.callback(
     Output('output-container-button', 'children'),
@@ -1564,7 +1620,7 @@ def display_coords(geojson):
     json_coords = df_coords.to_json(orient='split')
     return table, json_coords
 
-@app.callback(
+@app.callback(  
     Output('forecast-graph', 'figure', allow_duplicate=True),
     Output('model-status', 'children'),
     Input('model-status', 'children'),  # A dummy Input to trigger the page load callback
