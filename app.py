@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import json
 from dash import Dash, dcc, html, dash_table, Input, Output, State, callback_context
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
@@ -1544,8 +1545,8 @@ def display_coords(geojson):
             polygon_counter += 1  # Increment polygon counter after processing all vertices of a polygon
             pointGroup += 1
             
-    if not rows:
-        return "No coordinates available"
+    #if not rows:
+    #    return "No coordinates available"
 
     # Convert rows into a DataFrame and then into a dbc.Table
     df_coords = pd.DataFrame(rows)
@@ -1715,6 +1716,12 @@ def update_forecast_plot(forecast_period_slider_value, start_year_slider_value, 
         # Aggregate collision counts by date
         aggregated_data = filtered_df.resample('D', on='Timestamp').agg({'collision': 'sum'}).reset_index()
         aggregated_data.rename(columns={'Timestamp': 'ds', 'collision': 'y'}, inplace=True)
+
+        # Parse coords_json to check if it's effectively empty
+        coords_data = json.loads(coords_json)
+        if 'data' in coords_data and not coords_data['data']:
+            print("Received empty dataset in coords_json. Skipping processing for new coordinates.")
+            raise PreventUpdate
 
         # If coords_json is provided, adjust aggregated_data with additional_collisions
         if coords_json and coords_json != "null":
