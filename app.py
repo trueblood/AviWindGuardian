@@ -203,7 +203,7 @@ def make_map():
     """
     Function to create a map with specific edit controls.
     """
-    return dl.Map(center=[56, 10], zoom=15, children=[
+    return dl.Map(center=[39.5501, -105.7821], zoom=6, children=[
         dl.TileLayer(), 
         dl.FeatureGroup([
             dl.EditControl(
@@ -748,11 +748,8 @@ Make Tabs
 cords_card = dbc.Card(
     [
         dbc.CardBody(
-            html.Div(id="coords-display-container", style={'overflowY': 'scroll', 'height': '300px'}),
-        ),
-        html.Button("Draw marker", id="draw_marker", className="mt-2"),
-        html.Button("Remove -> Clear all", id="clear_all", className="mt-2"),
-        html.Button("Submit", id="submit_cords", className="mt-2"),
+            html.Div(id="coords-display-container", style={'overflowY': 'scroll', 'height': '50vh'}),
+        )
     ],
     className="mt-4",
 )
@@ -1333,28 +1330,28 @@ def update_totals(stocks, cash, start_bal, planning_time, start_yr):
     
     return data, fig, summary_table, ending_amount, ending_cagr
 
-# Trigger mode (draw marker).
-@app.callback(Output("edit_control", "drawToolbar"), Input("draw_marker", "n_clicks"))
-def trigger_mode(n_clicks):
-    if n_clicks is None:
-        raise PreventUpdate
-    return dict(mode="marker", n_clicks=n_clicks)
+# # Trigger mode (draw marker).
+# @app.callback(Output("edit_contmaxBounds=[[-15.0, -170.0], [70.0, -50.0]]ol", "drawToolbar"), Input("draw_marker", "n_clicks"))
+# def trigger_mode(n_clicks):
+#     if n_clicks is None:
+#         raise PreventUpdate
+#     return dict(mode="marker", n_clicks=n_clicks)
 
-# Trigger mode (edit) + action (remove all).
-@app.callback(
-    [
-        Output("edit_control", "editToolbar"),  # For edit control toolbar update
-        Output("coords-display-container", "children", allow_duplicate=True),  # To clear display container
-        Output("coords-json", "children", allow_duplicate=True)  # To clear JSON data
-    ],
-    [Input("clear_all", "n_clicks")],
-    prevent_initial_call=True
-)
-def trigger_action(n_clicks):
-    if n_clicks is None:
-        raise PreventUpdate
-    # Return update for edit control toolbar, empty children for coords-display-container, and empty JSON
-    return dict(mode="remove", action="clear all", n_clicks=n_clicks), None, "{}"
+# # Trigger mode (edit) + action (remove all).
+# @app.callback(
+#     [
+#         Output("edit_control", "editToolbar"),  # For edit control toolbar update
+#         Output("coords-display-container", "children", allow_duplicate=True),  # To clear display container
+#         Output("coords-json", "children", allow_duplicate=True)  # To clear JSON data
+#     ],
+#     [Input("clear_all", "n_clicks")],
+#     prevent_initial_call=True
+# )
+# def trigger_action(n_clicks):
+#     if n_clicks is None:
+#         raise PreventUpdate
+#     # Return update for edit control toolbar, empty children for coords-display-container, and empty JSON
+#     return dict(mode="remove", action="clear all", n_clicks=n_clicks), None, "{}"
 
 # Helper function to convert GeoJSON to DataFrame 
 def convert_geojson_to_dataframe(geojson):
@@ -1389,12 +1386,11 @@ def convert_geojson_to_dataframe(geojson):
         Output("coords-display-container", "children", allow_duplicate=True),  # Update the display container
         Output("coords-json", "children", allow_duplicate=True)  # Update the JSON data
     ],
-    [Input("edit_control", "geojson"),  # Listen for changes in geojson
-     Input("submit_cords", "n_clicks")],  # Listen for clicks on the submit button
+    [Input("edit_control", "geojson")],  # Listen for clicks on the submit button
     [State("coords-json", "children")],  # Maintain the state of coords-json
     prevent_initial_call=True
 )
-def trigger_action_and_predict(geojson, n_clicks, json_coords):
+def trigger_action_and_predict(geojson, json_coords):
     ctx = dash.callback_context
 
     if not ctx.triggered or "features" not in geojson:
