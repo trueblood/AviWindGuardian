@@ -33,9 +33,6 @@ app = Dash(
     external_stylesheets=[dbc.themes.SPACELAB, dbc.icons.FONT_AWESOME],
 )
 
-#  make dataframe from  spreadsheet:
-df = pd.read_csv("assets/historic.csv")
-
 """
 ==========================================================================
 Markdown Text
@@ -1253,3 +1250,6 @@ if __name__ == "__main__":
     app.run_server(debug=True, port=8050)
     print(os.getcwd())
     print("Current Working Directory:", os.getcwd())
+
+#if __name__=="__main__":
+ # app.run(host="127.0.0.1", port=int(os.environ['CDSW_APP_PORT']))
