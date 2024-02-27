@@ -817,18 +817,33 @@ def trigger_action_and_predict(geojson, json_coords):
         print("Updated df_coords with new predictions", df_coords)
         
     print("df_coords", df_coords)
-    # Prepare the table for display
-    if 'group' in df_coords.columns and '#' in df_coords.columns:
-        df_display = df_coords.drop(columns=['group', '#'])
-    else:
-        df_display = df_coords
-    table = dbc.Table.from_dataframe(df_display, striped=True, bordered=True, hover=True)
+    
+
+    table = setupDisplayTable(df_coords)
     print("after table create")
 
     # Convert updated df_coords to JSON for transmission
     updated_json_coords = df_coords.to_json(orient='split')
     print("Here are updated cords", updated_json_coords)
     return table, updated_json_coords
+
+def setupDisplayTable(df_coords):
+         # Prepare the table for display
+    if 'group' in df_coords.columns and '#' in df_coords.columns:
+        df_display = df_coords.drop(columns=['group', '#'])
+    else:
+        df_display = df_coords
+        
+    # Check if 'Prediction' column exists before renaming
+    if 'Prediction' in df_display.columns:
+        df_display = df_display.rename(columns={'Prediction': 'Predicted Collision Rate (%)'})
+        
+    if 'Type' in df_display.columns:
+        df_display = df_display.rename(columns={'Type': 'Marker Type'})
+        
+    table = dbc.Table.from_dataframe(df_display, striped=True, bordered=True, hover=True)
+   
+    return table
 
 def process_geometry(geometry, new_rows, current_group, current_counter):
     geom_type = geometry.get("type")
@@ -985,11 +1000,7 @@ def display_coords(geojson):
 
     # Convert rows into a DataFrame and then into a dbc.Table
     df_coords = pd.DataFrame(rows)
-    if 'group' in df_coords.columns and '#' in df_coords.columns:
-        df_display = df_coords.drop(columns=['group', '#'])
-    else:
-        df_display = df_coords
-    table = dbc.Table.from_dataframe(df_display, striped=True, bordered=True, hover=True)
+    table = setupDisplayTable(df_coords)
     #table = dbc.Table.from_dataframe(df_coords, striped=True, bordered=True, hover=True)
      # Convert DataFrame to JSON for easy transmission
     json_coords = df_coords.to_json(orient='split')
