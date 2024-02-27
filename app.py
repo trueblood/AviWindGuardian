@@ -857,6 +857,23 @@ def setupDisplayTable(df_coords):
     if 'Latitude' in df_display.columns and 'Longitude' in df_display.columns:
         df_display[['Latitude', 'Longitude']] = df_display[['Latitude', 'Longitude']].round(6)
 
+    # Create an empty list to hold the button groups
+    button_groups = []
+
+    # Iterate through the DataFrame rows
+    for idx, row in df_display.iterrows():
+        # Create a div that contains both buttons for the current row using Font Awesome icons
+        button_group = html.Div([
+            html.Button(html.I(className="fas fa-thumbs-up"), id={'type': 'thumbs-up', 'index': idx}, n_clicks=0),
+            html.Button(html.I(className="fas fa-thumbs-down"), id={'type': 'thumbs-down', 'index': idx}, n_clicks=0)
+        ], style={'display': 'flex', 'justifyContent': 'center', 'gap': '10px'})
+        
+        # Add the button group to the list
+        button_groups.append(button_group)
+
+    # Add the list of button groups as a new column in the DataFrame
+    df_display['Buttons'] = button_groups
+    
     table = dbc.Table.from_dataframe(df_display, striped=True, bordered=True, hover=True)
    
     return table
