@@ -15,7 +15,7 @@ import pandas as pd
 #from scripts.ai_data_dispatcher import AIDataDispatcher
 from scripts.randomforest import RandomForest
 import os
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, MinMaxScaler
 import numpy as np
 import dash
 import dash_core_components as dcc
@@ -836,11 +836,30 @@ def setupDisplayTable(df_coords):
         
     # Check if 'Prediction' column exists before renaming
     if 'Prediction' in df_display.columns:
-        df_display = df_display.rename(columns={'Prediction': 'Predicted Collision Rate (%)'})
+        df_display['Prediction'] = pd.to_numeric(df_display['Prediction'], errors='coerce')
+        df_display = df_display.rename(columns={'Prediction': 'Collision Risk (%)'})
+        
+        # Format and display only the first row of each group with the prediction value, subsequent rows as blank
+        first_rows = df_coords.groupby('group').head(1).index
+        for index, row in df_display.iterrows():
+            if index in first_rows:
+                prediction_value = row['Collision Risk (%)']
+                if pd.isna(prediction_value):
+                    # If the prediction value is NaN, display 'Pending'
+                    df_display.at[index, 'Collision Risk (%)'] = 'Pending'
+                else:
+                    # Format the first row of each group with the percentage value
+                    df_display.at[index, 'Collision Risk (%)'] = f"{prediction_value:.2f}%"
+            else:
+                # Leave the collision risk percentage blank for non-first rows in each group
+                df_display.at[index, 'Collision Risk (%)'] = ''
         
     if 'Type' in df_display.columns:
         df_display = df_display.rename(columns={'Type': 'Marker Type'})
         
+    if 'Latitude' in df_display.columns and 'Longitude' in df_display.columns:
+        df_display[['Latitude', 'Longitude']] = df_display[['Latitude', 'Longitude']].round(6)
+
     table = dbc.Table.from_dataframe(df_display, striped=True, bordered=True, hover=True)
    
     return table
