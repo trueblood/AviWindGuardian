@@ -1183,6 +1183,7 @@ app.layout = dbc.Container(
                         html.Div([
                             make_map()  # Call the function to create the map
                         ]),
+                        html.Hr(),
                         dcc.Graph(id='forecast-graph', className="pb-4", figure=load_forecast(1)[0]),
                         dcc.Graph(id="allocation_pie_chart", className="mb-2"),
                         dcc.Graph(id="returns_chart", className="pb-4"),
@@ -1408,13 +1409,16 @@ def trigger_action_and_predict(geojson, json_coords):
     df_coords = pd.DataFrame(columns=["group", "#", "Type", "Latitude", "Longitude", "Prediction"])
     new_rows = []  # To hold new data from geojson
 
+    current_group = 1  # Initialize group counter
+    current_counter = 1  # Initialize counter for each group
     for feature in geojson["features"]:
         geometry = feature.get("geometry")
         geom_type = geometry.get("type")
         coords = geometry.get("coordinates")
 
         if geom_type == "Point" or geom_type == "Polygon":
-            process_geometry(geometry, new_rows)
+            print("in point or polygon process geometry")
+            current_group, current_counter = process_geometry(geometry, new_rows,current_group, current_counter)
 
     # If there are new rows, predict and update df_coords
     if new_rows:
@@ -1422,8 +1426,9 @@ def trigger_action_and_predict(geojson, json_coords):
         print("New rows from GeoJSON:")
         #Add an identifier
         new_df['temp_id'] = range(1, len(new_df) + 1)
+        print("New rows from GeoJSON:", new_df.head())
         # Perform prediction for new rows
-        predictions = model.predict_with_location(new_df[["group", "#", "Type", "Latitude", "Longitude", "Prediction"]])
+        predictions = model.predict_with_location(new_df[["group", "#", "Type", "Latitude", "Longitude", "Prediction", "temp_id"]])
         print("after predictions", predictions)
         predictions_df = pd.DataFrame(predictions, columns=['Prediction'])
         predictions_df['temp_id'] = new_df['temp_id']
@@ -1461,23 +1466,28 @@ def trigger_action_and_predict(geojson, json_coords):
     print("Here are updated cords", updated_json_coords)
     return table, updated_json_coords
 
-def process_geometry(geometry, new_rows):
+def process_geometry(geometry, new_rows, current_group, current_counter):
     geom_type = geometry.get("type")
     coords = geometry.get("coordinates")
     if geom_type == "Point":
         lat, lon = coords[1], coords[0]
-        new_rows.append(create_row(lat, lon, "Point"))
+        row = create_row(current_group, current_counter, geom_type, lat, lon)
+        new_rows.append(row)
+        current_group += 1  # Increment group for each new Point
     elif geom_type == "Polygon":
         # Process each vertex of the polygon (assuming the first ring for simplicity)
         for index, coord in enumerate(coords[0]):
             lat, lon = coord[1], coord[0]
-            label = "Polygon Vertex" if index == 0 else ""
-            new_rows.append(create_row(lat, lon, label))
+            label = "Polygon" if index == 0 else ""
+            row = create_row(current_group, current_counter, label, lat, lon)
+            new_rows.append(row)
+        current_group += 1
+    return current_group, current_counter
 
-def create_row(lat, lon, label):
+def create_row(group, counter, label, lat, lon):
     return {
-        "group": 1,  # Update logic for group assignment as needed
-        "#": 1,  # Update logic for counter as needed
+        "group": group,
+        "#": counter,
         "Type": label,
         "Latitude": lat,
         "Longitude": lon,
