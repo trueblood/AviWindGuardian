@@ -1458,7 +1458,11 @@ def trigger_action_and_predict(geojson, json_coords):
         
     print("df_coords", df_coords)
     # Prepare the table for display
-    table = dbc.Table.from_dataframe(df_coords, striped=True, bordered=True, hover=True)
+    if 'group' in df_coords.columns and '#' in df_coords.columns:
+        df_display = df_coords.drop(columns=['group', '#'])
+    else:
+        df_display = df_coords
+    table = dbc.Table.from_dataframe(df_display, striped=True, bordered=True, hover=True)
     print("after table create")
 
     # Convert updated df_coords to JSON for transmission
@@ -1600,7 +1604,7 @@ def display_coords(geojson):
         if geom_type == "Point":
             lat, lon = coords[1], coords[0]
             label = "Point"
-            rows.append({"group": pointGroup, "#": point_counter, "Type": label,"Latitude": lat, "Longitude": lon, "Prediction": "N/A"})
+            rows.append({"group": pointGroup, "#": point_counter, "Type": label,"Latitude": lat, "Longitude": lon, "Prediction": "Pending"})
             point_counter += 1  # Increment point counter
             pointGroup += 1
             
@@ -1612,7 +1616,7 @@ def display_coords(geojson):
                     label = "Polygon"
                 else:
                     label = ""  # Subsequent vertices can have a generic label or be left blank
-                rows.append({"group": pointGroup, "#": polygon_counter, "Type": label, "Latitude": lat, "Longitude": lon, "Prediction": "N/A"})
+                rows.append({"group": pointGroup, "#": polygon_counter, "Type": label, "Latitude": lat, "Longitude": lon, "Prediction": "Pending"})
             polygon_counter += 1  # Increment polygon counter after processing all vertices of a polygon
             pointGroup += 1
             
@@ -1621,7 +1625,12 @@ def display_coords(geojson):
 
     # Convert rows into a DataFrame and then into a dbc.Table
     df_coords = pd.DataFrame(rows)
-    table = dbc.Table.from_dataframe(df_coords, striped=True, bordered=True, hover=True)
+    if 'group' in df_coords.columns and '#' in df_coords.columns:
+        df_display = df_coords.drop(columns=['group', '#'])
+    else:
+        df_display = df_coords
+    table = dbc.Table.from_dataframe(df_display, striped=True, bordered=True, hover=True)
+    #table = dbc.Table.from_dataframe(df_coords, striped=True, bordered=True, hover=True)
      # Convert DataFrame to JSON for easy transmission
     json_coords = df_coords.to_json(orient='split')
     return table, json_coords
@@ -1798,7 +1807,7 @@ def update_forecast_plot(forecast_period_slider_value, start_year_slider_value, 
         if coords_json and coords_json != "null":
             print("in coords_json and coords_json")
             new_points_df = pd.read_json(coords_json, orient='split')
-            new_points_df['Prediction'].replace('N/A', np.nan, inplace=True)
+            new_points_df['Prediction'].replace('Pending', np.nan, inplace=True)
             print("new points", new_points_df)
             today_date = datetime.today().strftime('%Y-%m-%d')
             #new_points_df['Prediction'] = pd.to_numeric(new_points_df['Prediction'], errors='coerce')
