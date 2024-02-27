@@ -25,6 +25,7 @@ from scripts.collisionforecastarima import CollisionForecastARIMA
 import warnings
 from datetime import datetime, timedelta
 from prophet import Prophet
+from dash.dependencies import Input, Output, State, MATCH, ALL
 
 warnings.filterwarnings("ignore")
 
@@ -542,7 +543,10 @@ Make Tabs
 cords_card = dbc.Card(
     [
         dbc.CardBody(
-            html.Div(id="coords-display-container", style={'overflowY': 'scroll', 'height': '50vh'}),
+            [
+                html.Div(id="coords-display-container", style={'overflowY': 'scroll', 'height': '50vh'}),
+                html.Div(id="model-feedback-container")
+            ]
         )
     ],
     className="mt-4",
@@ -825,6 +829,7 @@ def trigger_action_and_predict(geojson, json_coords):
     return table, updated_json_coords
 
 def setupDisplayTable(df_coords):
+    print("in setupDisplayTable", df_coords.head())
          # Prepare the table for display
     if 'group' in df_coords.columns and '#' in df_coords.columns:
         df_display = df_coords.drop(columns=['group', '#'])
@@ -860,12 +865,15 @@ def setupDisplayTable(df_coords):
     # Create an empty list to hold the button groups
     button_groups = []
 
+#unqiue rows 
     # Iterate through the DataFrame rows
     for idx, row in df_display.iterrows():
+        print("in idx row", idx, row)
+        print("in idx row", row['unique_group_id'])
         # Create a div that contains both buttons for the current row using Font Awesome icons
         button_group = html.Div([
-            html.Button(html.I(className="fas fa-thumbs-up"), id={'type': 'thumbs-up', 'index': idx}, n_clicks=0),
-            html.Button(html.I(className="fas fa-thumbs-down"), id={'type': 'thumbs-down', 'index': idx}, n_clicks=0)
+            html.Span(html.I(className="fas fa-thumbs-up"), id={'type': 'thumbs-up', 'index': row['unique_group_id']}, n_clicks=0),
+            html.Span(html.I(className="fas fa-thumbs-down"), id={'type': 'thumbs-down', 'index': row['unique_group_id']}, n_clicks=0)
         ], style={'display': 'flex', 'justifyContent': 'center', 'gap': '10px'})
         
         # Add the button group to the list
@@ -883,7 +891,8 @@ def process_geometry(geometry, new_rows, current_group, current_counter):
     coords = geometry.get("coordinates")
     if geom_type == "Point":
         lat, lon = coords[1], coords[0]
-        row = create_row(current_group, current_counter, geom_type, lat, lon)
+        unique_group_id = f"{geom_type}_{current_group}_{current_counter}"
+        row = create_row(current_group, current_counter, geom_type, lat, lon, unique_group_id)
         new_rows.append(row)
         current_group += 1  # Increment group for each new Point
     elif geom_type == "Polygon":
@@ -891,19 +900,21 @@ def process_geometry(geometry, new_rows, current_group, current_counter):
         for index, coord in enumerate(coords[0]):
             lat, lon = coord[1], coord[0]
             label = "Polygon" if index == 0 else ""
-            row = create_row(current_group, current_counter, label, lat, lon)
+            unique_group_id = f"{label}_{current_group}_{current_counter}" if index == 0 else ""  # Construct unique_group_id for the first vertex or leave blank for others
+            row = create_row(current_group, current_counter, label, lat, lon, unique_group_id)
             new_rows.append(row)
         current_group += 1
     return current_group, current_counter
 
-def create_row(group, counter, label, lat, lon):
+def create_row(group, counter, label, lat, lon, unique_group_id):
     return {
         "group": group,
         "#": counter,
         "Type": label,
         "Latitude": lat,
         "Longitude": lon,
-        "Prediction": "Pending"  # Placeholder for prediction
+        "Prediction": "Pending",  # Placeholder for prediction
+        "unique_group_id": unique_group_id 
     }
 
 @app.callback(
@@ -1012,7 +1023,8 @@ def display_coords(geojson):
         if geom_type == "Point":
             lat, lon = coords[1], coords[0]
             label = "Point"
-            rows.append({"group": pointGroup, "#": point_counter, "Type": label,"Latitude": lat, "Longitude": lon, "Prediction": "Pending"})
+            unique_group_id = f"{label}_{pointGroup}_{point_counter}"  # Construct unique_group_id
+            rows.append({"group": pointGroup, "#": point_counter, "Type": label,"Latitude": lat, "Longitude": lon, "Prediction": "Pending", "unique_group_id": unique_group_id })
             point_counter += 1  # Increment point counter
             pointGroup += 1
             
@@ -1024,7 +1036,8 @@ def display_coords(geojson):
                     label = "Polygon"
                 else:
                     label = ""  # Subsequent vertices can have a generic label or be left blank
-                rows.append({"group": pointGroup, "#": polygon_counter, "Type": label, "Latitude": lat, "Longitude": lon, "Prediction": "Pending"})
+                unique_group_id = f"{label}_{pointGroup}_{polygon_counter}" if index == 0 else ""  # Construct unique_group_id for the first vertex or leave blank for others
+                rows.append({"group": pointGroup, "#": polygon_counter, "Type": label, "Latitude": lat, "Longitude": lon, "Prediction": "Pending", "unique_group_id": unique_group_id })
             polygon_counter += 1  # Increment polygon counter after processing all vertices of a polygon
             pointGroup += 1
             
@@ -1262,6 +1275,37 @@ def update_forecast_plot(forecast_period_slider_value, start_year_slider_value, 
         print(e)
         return go.Figure(), 'Required file not found. Please check the file paths.'
 
+# Define callback to handle the thumbs button clicks
+@app.callback(
+    Output('model-feedback-container', 'children'),
+    [Input({'type': 'thumbs-up', 'index': ALL}, 'n_clicks'),
+     Input({'type': 'thumbs-down', 'index': ALL}, 'n_clicks')],
+    [State('coords-json', 'children')]
+)
+def handle_thumbs_clicks(*args):
+    print("in handle button click")
+    ctx = callback_context
+    state = ctx.states
+    coords_json = state['coords-json.children']
+    
+    if not coords_json or not ctx.triggered:
+         return ""
+    
+    coords_list = json.loads(coords_json)
+    print("coords_list", coords_list)
+    
+    button_info = json.loads(ctx.triggered[0]['prop_id'].split('.')[0])
+    print("button_info", button_info)
+    idx = button_info['index']
+    print("idx", idx)
+    
+    thumbs_up = 'thumbs-up' in ctx.triggered[0]['prop_id']
+    
+    #latitude = coords_list[idx]['Latitude']
+    #longitude = coords_list[idx]['Longitude']
+    
+    #return f"Latitude: {latitude}, Longitude: {longitude}, Thumbs-Up: {thumbs_up}"
+    return 'hi'
 
 if __name__ == "__main__":
     app.run_server(debug=True, port=8050)
