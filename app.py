@@ -1290,22 +1290,70 @@ def handle_thumbs_clicks(*args):
     
     if not coords_json or not ctx.triggered:
          return ""
-    
-    coords_list = json.loads(coords_json)
-    print("coords_list", coords_list)
-    
+
     button_info = json.loads(ctx.triggered[0]['prop_id'].split('.')[0])
-    print("button_info", button_info)
-    idx = button_info['index']
-    print("idx", idx)
+    idx, type = button_info['index'], button_info['type']
     
-    thumbs_up = 'thumbs-up' in ctx.triggered[0]['prop_id']
     
-    #latitude = coords_list[idx]['Latitude']
-    #longitude = coords_list[idx]['Longitude']
     
-    #return f"Latitude: {latitude}, Longitude: {longitude}, Thumbs-Up: {thumbs_up}"
-    return 'hi'
+    latitude, longitude = find_coords_by_unique_group_id(coords_json, idx)
+    
+    print("latitude", latitude)
+    print("longitude", longitude)
+    
+    if type == 'thumbs-up':
+        print("in thumbs up")
+        value = 1
+        #update_collision_in_csv(latitude, longitude, value)
+        response = f"Collision value updated for Latitude: {latitude}, Longitude: {longitude}"
+    elif type == 'thumbs-down':
+        print("in thumbs down")
+        value = -1
+        #update_collision_in_csv(latitude, longitude, value)
+        response = f"Collision value updated for Latitude: {latitude}, Longitude: {longitude}"
+    else:
+        raise ValueError("Invalid interaction type.")  # Handle unexpected interaction types
+    
+    return response
+
+def find_coords_by_unique_group_id(coords_json_str, unique_group_id):
+    # Load the JSON string into a Python dictionary
+    coords_json = json.loads(coords_json_str)
+    print("in find cords")
+    
+    # Convert the 'data' list into a list of dictionaries for easier searching
+    columns = coords_json['columns']
+    data_rows = coords_json['data']
+    data_dicts = [dict(zip(columns, row)) for row in data_rows]
+    
+    # Search for the matching unique_group_id
+    for row in data_dicts:
+        if row.get('unique_group_id') == unique_group_id:
+            latitude = row.get('Latitude')
+            longitude = row.get('Longitude')
+            return latitude, longitude
+            
+    # Return None if no match found
+    return None, None
+
+def update_collision_in_csv(latitude, longitude, adjustment_value):
+    # Load the CSV file
+    df = pd.read_csv('datasets/turbines/wind_turbines_with_collisions.csv')
+    
+    # Find the row with the matching latitude and longitude
+    match = df[(df['Latitude'] == latitude) & (df['Longitude'] == longitude)]
+    
+    if not match.empty:
+        # Adjust the 'Collision' value based on the interaction type
+        for index, row in match.iterrows():
+            new_collision_value = max(0, row['Collision'] - adjustment_value)  # Ensure collision value doesn't go below 0
+            df.at[index, 'Collision'] = new_collision_value
+        
+        # Save the updated DataFrame back to the CSV
+        df.to_csv('datasets/turbines/wind_turbines_with_collisions.csv', index=False)
+        return True
+    else:
+        return False
 
 if __name__ == "__main__":
     app.run_server(debug=True, port=8050)
