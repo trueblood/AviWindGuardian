@@ -872,6 +872,7 @@ def setupDisplayTable(df_coords):
         print("in idx row", row['unique_group_id'])
         # Create a div that contains both buttons for the current row using Font Awesome icons
         button_group = html.Div([
+            html.Span(html.I(className="fa-solid fa-user"), id={'type': 'user', 'index': row['unique_group_id']}, n_clicks=0, style={'display': 'none'}),
             html.Span(html.I(className="fas fa-thumbs-up"), id={'type': 'thumbs-up', 'index': row['unique_group_id']}, n_clicks=0),
             html.Span(html.I(className="fas fa-thumbs-down"), id={'type': 'thumbs-down', 'index': row['unique_group_id']}, n_clicks=0)
         ], style={'display': 'flex', 'justifyContent': 'center', 'gap': '10px'})
@@ -1278,12 +1279,14 @@ def update_forecast_plot(forecast_period_slider_value, start_year_slider_value, 
 # Define callback to handle the thumbs button clicks
 @app.callback(
     Output('model-feedback-container', 'children'),
-    [Input({'type': 'thumbs-up', 'index': ALL}, 'n_clicks'),
+    [Input({'type': 'user', 'index': ALL}, 'n_clicks'),
+     Input({'type': 'thumbs-up', 'index': ALL}, 'n_clicks'),
      Input({'type': 'thumbs-down', 'index': ALL}, 'n_clicks')],
     [State('coords-json', 'children')]
 )
 def handle_thumbs_clicks(*args):
     print("in handle button click")
+    
     ctx = callback_context
     state = ctx.states
     coords_json = state['coords-json.children']
@@ -1297,20 +1300,20 @@ def handle_thumbs_clicks(*args):
     
     
     latitude, longitude = find_coords_by_unique_group_id(coords_json, idx)
-    
-    print("latitude", latitude)
-    print("longitude", longitude)
-    
-    if type == 'thumbs-up':
+        
+    if type == 'user':
+        print("in user")
+        response = f"User interaction recorded for user"
+    elif type == 'thumbs-up':
         print("in thumbs up")
         value = 1
-        #update_collision_in_csv(latitude, longitude, value)
-        response = f"Collision value updated for Latitude: {latitude}, Longitude: {longitude}"
+        update_collision_in_csv(latitude, longitude, value)
+        response = f"Collision value updated for Latitude: {latitude}, Longitude: {longitude}, thumbs up"
     elif type == 'thumbs-down':
         print("in thumbs down")
         value = -1
-        #update_collision_in_csv(latitude, longitude, value)
-        response = f"Collision value updated for Latitude: {latitude}, Longitude: {longitude}"
+        update_collision_in_csv(latitude, longitude, value)
+        response = f"Collision value updated for Latitude: {latitude}, Longitude: {longitude}, thumbs down"
     else:
         raise ValueError("Invalid interaction type.")  # Handle unexpected interaction types
     
@@ -1338,25 +1341,29 @@ def find_coords_by_unique_group_id(coords_json_str, unique_group_id):
 
 def update_collision_in_csv(latitude, longitude, adjustment_value):
     # Load the CSV file
-    df = pd.read_csv('datasets/turbines/wind_turbines_with_collisions.csv')
+    csv_file_path = 'datasets/turbines/wind_turbines_with_collisions.csv'
+    df = pd.read_csv(csv_file_path)
     
     # Find the row with the matching latitude and longitude
-    match = df[(df['Latitude'] == latitude) & (df['Longitude'] == longitude)]
-    
+    match = df[(df['xlong'] == longitude) & (df['ylat'] == latitude)]
+
     if not match.empty:
-        # Adjust the 'Collision' value based on the interaction type
+        # If there's a match, update the collision value
         for index, row in match.iterrows():
-            new_collision_value = max(0, row['Collision'] - adjustment_value)  # Ensure collision value doesn't go below 0
-            df.at[index, 'Collision'] = new_collision_value
-        
-        # Save the updated DataFrame back to the CSV
-        df.to_csv('datasets/turbines/wind_turbines_with_collisions.csv', index=False)
-        return True
+            new_collision_value = max(0, row['collision'] + adjustment_value)  # Ensure collision doesn't go below 0
+            df.at[index, 'collision'] = new_collision_value
     else:
-        return False
+        # If no match, create a new record with the collision value adjusted from 0
+        new_collision_value = max(0, 0 + adjustment_value)  # Starting from 0, adjust by the adjustment_value but ensure it doesn't go below 0
+        new_record = pd.DataFrame({'xlong': [longitude], 'ylat': [latitude], 'collision': [new_collision_value]})
+        df = pd.concat([df, new_record], ignore_index=True)
+
+    # Save the updated DataFrame back to the CSV
+    df.to_csv(csv_file_path, index=False)
+    return True
 
 if __name__ == "__main__":
-    app.run_server(debug=True, port=8050)
+    app.run_server(debug=True, port=8060)
     print(os.getcwd())
     print("Current Working Directory:", os.getcwd())
 
