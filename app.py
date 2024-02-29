@@ -825,8 +825,9 @@ def trigger_action_and_predict(geojson, json_coords):
     print("after table create")
 
     # Convert updated df_coords to JSON for transmission
-    updated_json_coords = df_coords.to_json(orient='split')
+    updated_json_coords = df_coords.to_json(orient='split')        
     print("Here are updated cords", updated_json_coords)
+    
     return table, updated_json_coords
 
 def setupDisplayTable(df_coords):
@@ -862,7 +863,7 @@ def setupDisplayTable(df_coords):
         
     if 'Latitude' in df_display.columns and 'Longitude' in df_display.columns:
         df_display[['Latitude', 'Longitude']] = df_display[['Latitude', 'Longitude']].round(6)
-
+     
     # Create an empty list to hold the button groups
     button_groups = []
 
@@ -886,6 +887,9 @@ def setupDisplayTable(df_coords):
 
     # Add the list of button groups as a new column in the DataFrame
     df_display['Feedback'] = button_groups
+    
+    if 'unique_group_id' in df_display.columns:    
+       df_display.drop('unique_group_id', axis=1, inplace=True)
     
     table = dbc.Table.from_dataframe(df_display, striped=True, bordered=True, hover=True)
    
