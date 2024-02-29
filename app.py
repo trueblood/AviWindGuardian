@@ -1373,13 +1373,13 @@ def update_collision_in_csv(latitude, longitude, adjustment_value):
      Output({'type': 'thumbs-down', 'index': MATCH}, 'children'),
      Output({'type': 'thumbs-down', 'index': MATCH}, 'className')],
     [Input({'type': 'thumbs-down', 'index': ALL}, 'n_clicks')],
-    [State({'type': 'thumbs-up', 'index': ALL}, 'className')],
+    [State({'type': 'thumbs-up', 'index': MATCH}, 'className')],
     prevent_initial_call=True
 )
 def update_icon(n_clicks_list, thumbs_down_class):
     ctx = dash.callback_context
-
     print("thumbs up class is", thumbs_down_class)
+
     if not ctx.triggered:
         return [dash.no_update, dash.no_update, dash.no_update]  # Prevent update if no buttons were clicked
 
