@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import json
+import random
 from dash import Dash, dcc, html, dash_table, Input, Output, State, callback_context
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
@@ -25,12 +26,13 @@ from scripts.collisionforecastarima import CollisionForecastARIMA
 import warnings
 from datetime import datetime, timedelta
 from prophet import Prophet
+from dash.dependencies import Input, Output, State, MATCH, ALL
 
 warnings.filterwarnings("ignore")
 
 app = Dash(
     __name__,
-    external_stylesheets=[dbc.themes.SPACELAB, dbc.icons.FONT_AWESOME],
+    external_stylesheets=[dbc.themes.SPACELAB, dbc.icons.FONT_AWESOME, dbc.icons.BOOTSTRAP],
 )
 
 """
@@ -542,7 +544,10 @@ Make Tabs
 cords_card = dbc.Card(
     [
         dbc.CardBody(
-            html.Div(id="coords-display-container", style={'overflowY': 'scroll', 'height': '50vh'}),
+            [
+                html.Div(id="coords-display-container", style={'overflowY': 'scroll', 'height': '50vh'}),
+                html.Div(id="model-feedback-container")
+            ]
         )
     ],
     className="mt-4",
@@ -669,7 +674,7 @@ app.layout = dbc.Container(
                             interval=1,  # in milliseconds
                             n_intervals=0,
                             max_intervals=1  # Stop after the first call
-                        )
+                        ),
                     ],
                     width=12,
                     lg=7,
@@ -820,11 +825,13 @@ def trigger_action_and_predict(geojson, json_coords):
     print("after table create")
 
     # Convert updated df_coords to JSON for transmission
-    updated_json_coords = df_coords.to_json(orient='split')
+    updated_json_coords = df_coords.to_json(orient='split')        
     print("Here are updated cords", updated_json_coords)
+    
     return table, updated_json_coords
 
 def setupDisplayTable(df_coords):
+    print("in setupDisplayTable", df_coords.head())
          # Prepare the table for display
     if 'group' in df_coords.columns and '#' in df_coords.columns:
         df_display = df_coords.drop(columns=['group', '#'])
@@ -856,7 +863,34 @@ def setupDisplayTable(df_coords):
         
     if 'Latitude' in df_display.columns and 'Longitude' in df_display.columns:
         df_display[['Latitude', 'Longitude']] = df_display[['Latitude', 'Longitude']].round(6)
+     
+    # Create an empty list to hold the button groups
+    button_groups = []
 
+#unqiue rows 
+    # Iterate through the DataFrame rows
+    for idx, row in df_display.iterrows():
+        # Create a div that contains both buttons for the current row using Font Awesome icons
+        if not row['unique_group_id']:
+            button_group = html.Div([
+                html.Span(html.I(className="fa-solid fa-user"), id={'type': 'user', 'index': row['unique_group_id']}, n_clicks=0, style={'display': 'none'})
+            ], style={'display': 'flex', 'justifyContent': 'center', 'gap': '10px'})
+        else:
+            button_group = html.Div([
+                html.Span(html.I(className="fa-solid fa-user"), id={'type': 'user', 'index': row['unique_group_id']}, n_clicks=0, style={'display': 'none'}),
+                html.Span(html.I(className="bi bi-hand-thumbs-up"), id={'type': 'thumbs-up', 'index': row['unique_group_id']}, n_clicks=0),
+                html.Span(html.I(className="bi bi-hand-thumbs-down"), id={'type': 'thumbs-down', 'index': row['unique_group_id']}, n_clicks=0)
+            ], style={'display': 'flex', 'justifyContent': 'center', 'gap': '10px'})
+        
+        # Add the button group to the list
+        button_groups.append(button_group)
+
+    # Add the list of button groups as a new column in the DataFrame
+    df_display['Feedback'] = button_groups
+    
+    if 'unique_group_id' in df_display.columns:    
+       df_display.drop('unique_group_id', axis=1, inplace=True)
+    
     table = dbc.Table.from_dataframe(df_display, striped=True, bordered=True, hover=True)
    
     return table
@@ -866,7 +900,8 @@ def process_geometry(geometry, new_rows, current_group, current_counter):
     coords = geometry.get("coordinates")
     if geom_type == "Point":
         lat, lon = coords[1], coords[0]
-        row = create_row(current_group, current_counter, geom_type, lat, lon)
+        unique_group_id = f"{geom_type}_{current_group}_{current_counter}"
+        row = create_row(current_group, current_counter, geom_type, lat, lon, unique_group_id)
         new_rows.append(row)
         current_group += 1  # Increment group for each new Point
     elif geom_type == "Polygon":
@@ -874,19 +909,21 @@ def process_geometry(geometry, new_rows, current_group, current_counter):
         for index, coord in enumerate(coords[0]):
             lat, lon = coord[1], coord[0]
             label = "Polygon" if index == 0 else ""
-            row = create_row(current_group, current_counter, label, lat, lon)
+            unique_group_id = f"{label}_{current_group}_{current_counter}" if index == 0 else ""  # Construct unique_group_id for the first vertex or leave blank for others
+            row = create_row(current_group, current_counter, label, lat, lon, unique_group_id)
             new_rows.append(row)
         current_group += 1
     return current_group, current_counter
 
-def create_row(group, counter, label, lat, lon):
+def create_row(group, counter, label, lat, lon, unique_group_id):
     return {
         "group": group,
         "#": counter,
         "Type": label,
         "Latitude": lat,
         "Longitude": lon,
-        "Prediction": "Pending"  # Placeholder for prediction
+        "Prediction": "Pending",  # Placeholder for prediction
+        "unique_group_id": unique_group_id 
     }
 
 @app.callback(
@@ -995,7 +1032,8 @@ def display_coords(geojson):
         if geom_type == "Point":
             lat, lon = coords[1], coords[0]
             label = "Point"
-            rows.append({"group": pointGroup, "#": point_counter, "Type": label,"Latitude": lat, "Longitude": lon, "Prediction": "Pending"})
+            unique_group_id = f"{label}_{pointGroup}_{point_counter}"  # Construct unique_group_id
+            rows.append({"group": pointGroup, "#": point_counter, "Type": label,"Latitude": lat, "Longitude": lon, "Prediction": "Pending", "unique_group_id": unique_group_id })
             point_counter += 1  # Increment point counter
             pointGroup += 1
             
@@ -1007,7 +1045,8 @@ def display_coords(geojson):
                     label = "Polygon"
                 else:
                     label = ""  # Subsequent vertices can have a generic label or be left blank
-                rows.append({"group": pointGroup, "#": polygon_counter, "Type": label, "Latitude": lat, "Longitude": lon, "Prediction": "Pending"})
+                unique_group_id = f"{label}_{pointGroup}_{polygon_counter}" if index == 0 else ""  # Construct unique_group_id for the first vertex or leave blank for others
+                rows.append({"group": pointGroup, "#": polygon_counter, "Type": label, "Latitude": lat, "Longitude": lon, "Prediction": "Pending", "unique_group_id": unique_group_id })
             polygon_counter += 1  # Increment polygon counter after processing all vertices of a polygon
             pointGroup += 1
             
@@ -1245,9 +1284,191 @@ def update_forecast_plot(forecast_period_slider_value, start_year_slider_value, 
         print(e)
         return go.Figure(), 'Required file not found. Please check the file paths.'
 
+# Define callback to handle the thumbs button clicks
+@app.callback(
+    Output('model-feedback-container', 'children'),
+    [Input({'type': 'user', 'index': ALL}, 'n_clicks'),
+     Input({'type': 'thumbs-up', 'index': ALL}, 'n_clicks'),
+     Input({'type': 'thumbs-down', 'index': ALL}, 'n_clicks')],
+    [State('coords-json', 'children')],
+    prevent_initial_call=True
+)
+def handle_thumbs_clicks(*args):
+    print("in handle button click")
+    
+    ctx = callback_context
+    state = ctx.states
+    coords_json = state['coords-json.children']
+    print("coords_json", coords_json)
+    
+    if not coords_json or not ctx.triggered:
+         return ""
+
+    button_info = json.loads(ctx.triggered[0]['prop_id'].split('.')[0])
+    idx, type = button_info['index'], button_info['type']
+    button_type = button_info['type']
+    
+    cords = []    
+    if 'Polygon' in idx:
+        parts = idx.split('_')
+        coords_json = json.loads(coords_json)
+        print("in find cords")
+
+        # Convert the 'data' list into a list of dictionaries for easier searching
+        columns = coords_json['columns']
+        data_rows = coords_json['data']
+        data_dicts = [dict(zip(columns, row)) for row in data_rows]
+        
+        # Search for the matching unique_group_id
+        for row in data_dicts:
+            print("row is", row)
+            print("values we want", parts[1], parts[2])
+            if row.get('group') == int(parts[1]) and row.get('#') == int(parts[2]):
+                print("in row polygon")
+                latitude = row.get('Latitude')
+                longitude = row.get('Longitude')
+                prediction = row.get('Prediction')
+                cords.append((latitude, longitude, prediction))  # Append as a tuple
+    else:
+        latitude, longitude, prediction = find_coords_by_unique_group_id(coords_json, idx)
+        cords.append((latitude, longitude, prediction))  # Append as a tuple
+  
+    print(cords)
+    response = ""
+    if type == 'user':
+        print("in user")
+        response = f"User interaction recorded for user"
+    elif type == 'thumbs-up':
+        print("in thumbs up")
+        for latitude, longitude, prediction in cords:
+            if (float(prediction) > 0.0):
+                value = 1
+            else:
+                value = 0
+            update_collision_in_csv(latitude, longitude, value)
+            response = f"Collision value updated for Latitude: {latitude}, Longitude: {longitude}, thumbs up"
+    elif type == 'thumbs-down':
+        print("in thumbs down")
+        value = -1
+        for latitude, longitude, prediction in cords:
+            update_collision_in_csv(latitude, longitude, value)
+            response = f"Collision value updated for Latitude: {latitude}, Longitude: {longitude}, thumbs down"
+    else:
+        raise ValueError("Invalid interaction type.")  # Handle unexpected interaction types
+    
+    return response
+
+def find_coords_by_unique_group_id(coords_json_str, unique_group_id):
+    # Load the JSON string into a Python dictionary
+    coords_json = json.loads(coords_json_str)
+    print("in find cords")
+    
+    # Convert the 'data' list into a list of dictionaries for easier searching
+    columns = coords_json['columns']
+    data_rows = coords_json['data']
+    data_dicts = [dict(zip(columns, row)) for row in data_rows]
+    
+    # Search for the matching unique_group_id
+    for row in data_dicts:
+        if row.get('unique_group_id') == unique_group_id:
+            latitude = row.get('Latitude')
+            longitude = row.get('Longitude')
+            prediction = row.get('Prediction')
+            return latitude, longitude, prediction
+            
+    # Return None if no match found
+    return None, None, None
+
+def update_collision_in_csv(latitude, longitude, adjustment_value):
+    # Load the CSV file
+    csv_file_path = 'datasets/turbines/wind_turbines_with_collisions.csv'
+    df = pd.read_csv(csv_file_path)
+    
+    # Find the row with the matching latitude and longitude
+    match = df[(df['xlong'] == longitude) & (df['ylat'] == latitude)]
+
+    if not match.empty:
+        # If there's a match, update the collision value
+        for index, row in match.iterrows():
+            new_collision_value = max(0, row['collision'] + adjustment_value)  # Ensure collision doesn't go below 0
+            df.at[index, 'collision'] = new_collision_value
+    else:
+        # If no match, create a new record with the collision value adjusted from 0
+        new_collision_value = max(0, 0 + adjustment_value)  # Starting from 0, adjust by the adjustment_value but ensure it doesn't go below 0
+        new_record = pd.DataFrame({'xlong': [longitude], 'ylat': [latitude], 'collision': [new_collision_value]})
+        df = pd.concat([df, new_record], ignore_index=True)
+
+    # Save the updated DataFrame back to the CSV
+    df.to_csv(csv_file_path, index=False)
+    return True
+
+@app.callback(
+    [Output({'type': 'thumbs-down', 'index': MATCH}, 'id'),
+     Output({'type': 'thumbs-down', 'index': MATCH}, 'children'),
+     Output({'type': 'thumbs-down', 'index': MATCH}, 'className')],
+    [Input({'type': 'thumbs-down', 'index': ALL}, 'n_clicks')],
+    [State({'type': 'thumbs-up', 'index': MATCH}, 'className')],
+    prevent_initial_call=True
+)
+def update_icon(n_clicks_list, thumbs_down_class):
+    ctx = dash.callback_context
+    print("thumbs up class is", thumbs_down_class)
+
+    if not ctx.triggered:
+        return [dash.no_update, dash.no_update, dash.no_update]  # Prevent update if no buttons were clicked
+
+    # Determine which button was clicked
+    button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    button_info = json.loads(button_id)
+    idx = button_info['index']   
+ 
+    total_clicks = sum(n_clicks_list)
+    if total_clicks % 2 == 1:
+        new_id = {'type': 'thumbs-down', 'index': idx}
+        new_content = html.I(className="bi bi-hand-thumbs-down-fill")  # Example new content
+        new_class = ''  # Resetting the class
+    else:
+        new_id = {'type': 'thumbs-down', 'index': idx}
+        new_content = html.I(className="bi bi-hand-thumbs-down")  # Example new content
+        new_class = ''  # Resetting the class
+
+    return [new_id, new_content, new_class]
+
+
+@app.callback(
+    [Output({'type': 'thumbs-up', 'index': MATCH}, 'id'),
+     Output({'type': 'thumbs-up', 'index': MATCH}, 'children'),
+     Output({'type': 'thumbs-up', 'index': MATCH}, 'className')],
+    [Input({'type': 'thumbs-up', 'index': ALL}, 'n_clicks')],
+    [State({'type': 'thumbs-down', 'index': MATCH}, 'className')],
+    prevent_initial_call=True
+)
+def update_icon(n_clicks_list, thumbs_down_class):
+    ctx = dash.callback_context
+
+    print("thumbs down class is", thumbs_down_class)
+    if not ctx.triggered:
+        return [dash.no_update, dash.no_update, dash.no_update]  # Prevent update if no buttons were clicked
+
+    # Determine which button was clicked
+    button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    button_info = json.loads(button_id)
+    idx = button_info['index']   
+ 
+    total_clicks = sum(n_clicks_list)
+    if total_clicks % 2 == 1:
+        new_id = {'type': 'thumbs-up', 'index': idx}
+        new_content = html.I(className="bi bi-hand-thumbs-up-fill")  # Example new content
+        new_class = ''  # Resetting the class
+    else:
+        new_id = {'type': 'thumbs-up', 'index': idx}
+        new_content = html.I(className="bi bi-hand-thumbs-up")  # Example new content
+        new_class = ''  # Resetting the class
+
+    return [new_id, new_content, new_class]
 
 if __name__ == "__main__":
-    app.run_server(debug=True, port=8050)
+    app.run_server(debug=True, port=8060)
     print(os.getcwd())
     print("Current Working Directory:", os.getcwd())
 
