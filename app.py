@@ -28,6 +28,7 @@ from datetime import datetime, timedelta
 from prophet import Prophet
 from dash.dependencies import Input, Output, State, MATCH, ALL
 import requests
+import re
 
 warnings.filterwarnings("ignore")
 
@@ -722,7 +723,6 @@ Callbacks
 def convert_geojson_to_dataframe(geojson):
     # Check if the GeoJSON contains any features
     if 'features' not in geojson or len(geojson['features']) == 0:
-        print("No features in GeoJSON")
         return pd.DataFrame()
 
     coords = []
@@ -735,7 +735,6 @@ def convert_geojson_to_dataframe(geojson):
             print(f"Skipping non-Point or invalid feature: {geom}")
 
     if not coords:
-        print("No valid Point coordinates found in GeoJSON features")
         return pd.DataFrame()
     
     return pd.DataFrame(coords, columns=['xlong', 'ylat'])
@@ -781,29 +780,22 @@ def trigger_action_and_predict(geojson, json_coords):
         coords = geometry.get("coordinates")
 
         if geom_type == "Point" or geom_type == "Polygon":
-            print("in point or polygon process geometry")
             current_group, current_counter = process_geometry(geometry, new_rows,current_group, current_counter)
 
     # If there are new rows, predict and update df_coords
     if new_rows:
         new_df = pd.DataFrame(new_rows)
-        print("New rows from GeoJSON:")
         #Add an identifier
         new_df['temp_id'] = range(1, len(new_df) + 1)
-        print("New rows from GeoJSON:", new_df.head())
         # Perform prediction for new rows
         predictions = model.predict_with_location(new_df[["group", "#", "Type", "Latitude", "Longitude", "Prediction", "temp_id"]])
-        print("after predictions", predictions)
         predictions_df = pd.DataFrame(predictions, columns=['Prediction'])
         predictions_df['temp_id'] = new_df['temp_id']
         
         new_df = pd.merge(new_df, predictions_df, on='temp_id', how='left')
         new_df.drop('temp_id', axis=1, inplace=True)  # Remove the temporary identifier
-        print("After attaching predictions to new_df", new_df)
         
         #new_df['Prediction'] = predictions  # Update the DataFrame with new predictions
-        print("after new_df", new_df)
-        print("before merge", new_df.head())
         df_coords = pd.concat([df_coords, new_df], ignore_index=True)
         
         df_coords['Prediction'] = df_coords['Prediction_y'].combine_first(df_coords['Prediction_x'])
@@ -818,22 +810,17 @@ def trigger_action_and_predict(geojson, json_coords):
         #print("after merge", df_coords)
         #df_coords['Prediction'] = df_coords['Prediction_new'].combine_first(df_coords['Prediction'])
         #df_coords.drop(['Prediction_new'], axis=1, inplace=True)
-        print("Updated df_coords with new predictions", df_coords)
         
-    print("df_coords", df_coords)
     
 
     table = setupDisplayTable(df_coords)
-    print("after table create")
 
     # Convert updated df_coords to JSON for transmission
     updated_json_coords = df_coords.to_json(orient='split')        
-    print("Here are updated cords", updated_json_coords)
     
     return table, updated_json_coords
 
 def setupDisplayTable(df_coords):
-    print("in setupDisplayTable", df_coords.head())
          # Prepare the table for display
     if 'group' in df_coords.columns and '#' in df_coords.columns:
         df_display = df_coords.drop(columns=['group', '#'])
@@ -962,8 +949,6 @@ def trainModel():
     data = df.values  # If 'data' is derived from df
     df['birdspecies'] = df['birdspecies'].str.lower()  # Convert to lowercase for consistency
     # Check the variance of 'type' and 'birdspecies' to decide on encoding
-    print(df['type'].value_counts())
-    print(df['birdspecies'].value_counts())
         
     # Encode categorical variables using Label Encoding for simplicity
     label_encoder_type = LabelEncoder()
@@ -996,11 +981,7 @@ def convert_geojson_to_dataframe(geojson):
     # Implement conversion logic
     return pd.DataFrame()
 
-def format_predictions(predictions):
-    
-    print("In format predictions")
-    print(predictions)
-    
+def format_predictions(predictions):    
     # Assuming `predictions` is a DataFrame with the specified columns
     if predictions.empty:
         return "No predictions available"
@@ -1070,7 +1051,6 @@ def display_coords(geojson):
     prevent_initial_call=True
 )
 def update_graph_on_load(_):
-    print("in update_graph_on_load")
     # Call the load_forecast function to get the figure
     figure, status_message = load_forecast(_)
     return figure, status_message
@@ -1081,7 +1061,6 @@ def update_graph_on_load(_):
     prevent_initial_call=True
 )
 def train_arima_model(n_clicks):
-    print("in train arima model")
     # Replace the following path with the path to your dataset
     data_path = 'datasets/turbines/detailed_wind_turbine_collisions_bk.csv'
     if n_clicks > 0:
@@ -1089,7 +1068,6 @@ def train_arima_model(n_clicks):
         data = pd.read_csv(data_path)
         
         data['Timestamp'] = pd.to_datetime(data['Timestamp'], errors='coerce')
-        print(data)
         # Specify the column names (time column first)
         columns = ['Timestamp']
         
@@ -1196,14 +1174,12 @@ from dash.dependencies import Input, Output
      Input('coords-json', 'children')]
 )
 def update_forecast_plot(forecast_period_slider_value, start_year_slider_value, n, coords_json):
-    print("in update_forecast_plot from page laod")
     # Check if coords_json is not provided and skip update if so
     if not coords_json or coords_json == "null":
         print("No new coordinates provided. Using only historical data.")
         raise PreventUpdate
 
     # Print contents of coords_json to console for debugging
-    print(f"Received coords_json contents: {coords_json}")
     
     try:
         # Load and prepare your datasets
@@ -1235,10 +1211,8 @@ def update_forecast_plot(forecast_period_slider_value, start_year_slider_value, 
 
         # If coords_json is provided, adjust aggregated_data with additional_collisions
         if 'data' in coords_data and coords_data['data']:
-            print("in coords_json and coords_json")
             new_points_df = pd.read_json(coords_json, orient='split')
             new_points_df['Prediction'].replace('Pending', np.nan, inplace=True)
-            print("new points", new_points_df)
             today_date = datetime.today().strftime('%Y-%m-%d')
             #new_points_df['Prediction'] = pd.to_numeric(new_points_df['Prediction'], errors='coerce')
             additional_collisions = new_points_df['Prediction'].sum()
@@ -1246,32 +1220,22 @@ def update_forecast_plot(forecast_period_slider_value, start_year_slider_value, 
             # Convert 'ds' column to datetime for comparison
             aggregated_data['ds'] = pd.to_datetime(aggregated_data['ds'])
             #print("after", aggregated_data)
-            print("before if")
             # Check if today's date exists in 'ds' column and update or append accordingly
             if pd.to_datetime(today_date) in aggregated_data['ds'].values:
-                print("in if")
                 aggregated_data.loc[aggregated_data['ds'] == pd.to_datetime(today_date), 'y'] += additional_collisions
-                print("added new collision points to existing date")
                 
             else:
-                print("in else")
                 new_row = {'ds': pd.to_datetime(today_date), 'y': additional_collisions}
-                print("new row", new_row)
                 new_row_df = pd.DataFrame([new_row])
                 aggregated_data = pd.concat([aggregated_data, new_row_df], ignore_index=True)
-                print("added new collision points to existing date")
 
-        print("aggreated data", aggregated_data)
-        print("before getting model")
         # Prophet forecasting
         model = Prophet()
         model.fit(aggregated_data)
-        print("after fitting model")
         future_dates = model.make_future_dataframe(periods=forecast_period_slider_value)
         forecast = model.predict(future_dates)
 
         newest_date = aggregated_data['ds'].max()
-        print(newest_date)
 
         # Create and update the plot
         fig = go.Figure()
@@ -1280,7 +1244,6 @@ def update_forecast_plot(forecast_period_slider_value, start_year_slider_value, 
         fig.update_layout(title='Aggregated Collision Counts and Forecast',
                           xaxis_title='Date', yaxis_title='Number of Collisions',
                           xaxis_rangeslider_visible=True, showlegend=True, template="none")
-        print("figure updated")
 
         return fig
     except FileNotFoundError as e:
@@ -1297,12 +1260,10 @@ def update_forecast_plot(forecast_period_slider_value, start_year_slider_value, 
     prevent_initial_call=True
 )
 def handle_thumbs_clicks(*args):
-    print("in handle button click")
     
     ctx = callback_context
     state = ctx.states
     coords_json = state['coords-json.children']
-    print("coords_json", coords_json)
     
     if not coords_json or not ctx.triggered:
          return ""
@@ -1315,7 +1276,6 @@ def handle_thumbs_clicks(*args):
     if 'Polygon' in idx:
         parts = idx.split('_')
         coords_json = json.loads(coords_json)
-        print("in find cords")
 
         # Convert the 'data' list into a list of dictionaries for easier searching
         columns = coords_json['columns']
@@ -1324,10 +1284,7 @@ def handle_thumbs_clicks(*args):
         
         # Search for the matching unique_group_id
         for row in data_dicts:
-            print("row is", row)
-            print("values we want", parts[1], parts[2])
             if row.get('group') == int(parts[1]) and row.get('#') == int(parts[2]):
-                print("in row polygon")
                 latitude = row.get('Latitude')
                 longitude = row.get('Longitude')
                 prediction = row.get('Prediction')
@@ -1336,13 +1293,11 @@ def handle_thumbs_clicks(*args):
         latitude, longitude, prediction = find_coords_by_unique_group_id(coords_json, idx)
         cords.append((latitude, longitude, prediction))  # Append as a tuple
   
-    print(cords)
     response = ""
     if type == 'user':
-        print("in user")
-        response = f"User interaction recorded for user"
+        #response = f"User interaction recorded for user"
+        response = None
     elif type == 'thumbs-up':
-        print("in thumbs up")
         for latitude, longitude, prediction in cords:
             if (float(prediction) > 0.0):
                 value = 1
@@ -1350,12 +1305,13 @@ def handle_thumbs_clicks(*args):
                 value = 0
             update_collision_in_csv(latitude, longitude, value)
             response = f"Collision value updated for Latitude: {latitude}, Longitude: {longitude}, thumbs up"
+            #response = None
     elif type == 'thumbs-down':
-        print("in thumbs down")
         value = -1
         for latitude, longitude, prediction in cords:
             update_collision_in_csv(latitude, longitude, value)
             response = f"Collision value updated for Latitude: {latitude}, Longitude: {longitude}, thumbs down"
+            #response = None
     else:
         raise ValueError("Invalid interaction type.")  # Handle unexpected interaction types
     
@@ -1364,7 +1320,6 @@ def handle_thumbs_clicks(*args):
 def find_coords_by_unique_group_id(coords_json_str, unique_group_id):
     # Load the JSON string into a Python dictionary
     coords_json = json.loads(coords_json_str)
-    print("in find cords")
     
     # Convert the 'data' list into a list of dictionaries for easier searching
     columns = coords_json['columns']
@@ -1415,7 +1370,6 @@ def update_collision_in_csv(latitude, longitude, adjustment_value):
 )
 def update_icon(n_clicks_list, thumbs_down_class):
     ctx = dash.callback_context
-    print("thumbs up class is", thumbs_down_class)
 
     if not ctx.triggered:
         return [dash.no_update, dash.no_update, dash.no_update]  # Prevent update if no buttons were clicked
@@ -1490,35 +1444,92 @@ def fetch_wind_speed(lat, lon):
     [State('marker-layer', 'children')]
 )
 def update_markers(geojson_data, existing_markers):
-    print("in update markers")
     if not geojson_data or 'features' not in geojson_data:
         raise PreventUpdate
-    
-    # Initialize list to hold updated markers
-    updated_markers = existing_markers if existing_markers else []
 
+    # Initialize list to hold updated markers and polygons
+    updated_features = existing_markers if existing_markers else []
+
+    windSpeeds = []
     # Loop through each feature in the GeoJSON
     for feature in geojson_data['features']:
-        # Extract the geometry type and coordinates
         geom_type = feature['geometry']['type']
         coords = feature['geometry']['coordinates']
 
-        # Check if the feature is a Point (marker)
         if geom_type == 'Point':
+            # Handle Point geometry (Marker)
             lon, lat = coords
-            # Fetch wind speed for the marker's coordinates
-            wind_speed = fetch_wind_speed(lat, lon)
-
-            # Create a new marker with the fetched wind speed in its tooltip
+            wind_speed = fetch_wind_speed(lat, lon)  # Assume this function fetches the wind speed as a string
             new_marker = dl.Marker(position=[lat, lon], children=[
                 dl.Tooltip(f"Wind Speed: {wind_speed}")
             ])
+            updated_features.append(new_marker)
+        elif geom_type == 'Polygon':
+            # Handle Polygon geometry
+            # Convert GeoJSON coordinates to Leaflet polygon coordinates format
+            polygon_coords = [[lat_lon[::-1] for lat_lon in coords[0]]]  # Assuming exterior ring only
+           
+
+            # Iterate through each ring in the polygon
+            for ring in polygon_coords:
+                # Iterate through each coordinate pair in the current ring
+                for lat, lon in ring:
+                    wind_speed = extract_average_wind_speed(fetch_wind_speed(lat, lon))  # Fetch wind speed for each coordinate pair
+                    windSpeeds.append(wind_speed)
+                    #avgWindSpeed = average_wind_speed(wind_speed)
+                    #print("average wind speed", avgWindSpeed, lat, lon)
+                    #windSpeeds.append(float(avgWindSpeed))  # Convert wind speed to float and add to the list
+
+
+
+            if (len(windSpeeds) > 0):
+                valid_speeds = [speed for speed in windSpeeds if speed is not None]
+                average_wind_speed = sum(valid_speeds) / len(valid_speeds)   
+                print("average wind speed is", average_wind_speed)       
+            else:
+                average_wind_speed = 0
             
-            # Append the new marker to the updated markers list
-            updated_markers.append(new_marker)
+            #for lon, lat in polygon_coords:
+            #    wind_speed = fetch_wind_speed(lat, lon) 
+            #    windSpeeds.append(wind_speed)
 
-    return updated_markers
+            polygon_label = f"Average Wind Speed: {round(average_wind_speed)} mph"  # Customize this label as needed
+            new_polygon = dl.Polygon(
+                positions=polygon_coords,
+                children=[dl.Tooltip(polygon_label)],
+                color="#007bff",
+                fill=True,
+                fillColor="#ADD8E6",
+                fillOpacity=0.5,
+            )
+            updated_features.append(new_polygon)
 
+    return updated_features
+
+def average_wind_speed(wind_speeds):
+    """
+    Calculate the average wind speed from a list of wind speeds.
+
+    Parameters:
+    wind_speeds (list of float): List of wind speeds in mph.
+
+    Returns:
+    float: The average wind speed.
+    """
+    if not wind_speeds:  # Check if the list is empty
+        return 0.0  # Return 0 or any default value you deem appropriate
+    return sum(wind_speeds) / len(wind_speeds)
+
+def extract_average_wind_speed(wind_speed_str):
+    # Find all numbers in the string
+    numbers = re.findall(r'\d+', wind_speed_str)
+    # Convert found strings to floats
+    numbers = [float(num) for num in numbers]
+    # Calculate the average if there are any numbers
+    if numbers:
+        return sum(numbers) / len(numbers)
+    else:
+        return None  # Or some default value
 
 if __name__ == "__main__":
     app.run_server(debug=True, port=8060)
