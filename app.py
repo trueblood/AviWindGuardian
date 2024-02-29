@@ -869,14 +869,17 @@ def setupDisplayTable(df_coords):
 #unqiue rows 
     # Iterate through the DataFrame rows
     for idx, row in df_display.iterrows():
-        print("in idx row", idx, row)
-        print("in idx row", row['unique_group_id'])
         # Create a div that contains both buttons for the current row using Font Awesome icons
-        button_group = html.Div([
-            html.Span(html.I(className="fa-solid fa-user"), id={'type': 'user', 'index': row['unique_group_id']}, n_clicks=0, style={'display': 'none'}),
-            html.Span(html.I(className="bi bi-hand-thumbs-up"), id={'type': 'thumbs-up', 'index': row['unique_group_id']}, n_clicks=0),
-            html.Span(html.I(className="bi bi-hand-thumbs-down"), id={'type': 'thumbs-down', 'index': row['unique_group_id']}, n_clicks=0)
-        ], style={'display': 'flex', 'justifyContent': 'center', 'gap': '10px'})
+        if not row['unique_group_id']:
+            button_group = html.Div([
+                html.Span(html.I(className="fa-solid fa-user"), id={'type': 'user', 'index': row['unique_group_id']}, n_clicks=0, style={'display': 'none'})
+            ], style={'display': 'flex', 'justifyContent': 'center', 'gap': '10px'})
+        else:
+            button_group = html.Div([
+                html.Span(html.I(className="fa-solid fa-user"), id={'type': 'user', 'index': row['unique_group_id']}, n_clicks=0, style={'display': 'none'}),
+                html.Span(html.I(className="bi bi-hand-thumbs-up"), id={'type': 'thumbs-up', 'index': row['unique_group_id']}, n_clicks=0),
+                html.Span(html.I(className="bi bi-hand-thumbs-down"), id={'type': 'thumbs-down', 'index': row['unique_group_id']}, n_clicks=0)
+            ], style={'display': 'flex', 'justifyContent': 'center', 'gap': '10px'})
         
         # Add the button group to the list
         button_groups.append(button_group)
@@ -1292,6 +1295,7 @@ def handle_thumbs_clicks(*args):
     ctx = callback_context
     state = ctx.states
     coords_json = state['coords-json.children']
+    print("coords_json", coords_json)
     
     if not coords_json or not ctx.triggered:
          return ""
@@ -1300,25 +1304,51 @@ def handle_thumbs_clicks(*args):
     idx, type = button_info['index'], button_info['type']
     button_type = button_info['type']
     
-    latitude, longitude, prediction = find_coords_by_unique_group_id(coords_json, idx)
-    
-    
+    cords = []    
+    if 'Polygon' in idx:
+        parts = idx.split('_')
+        coords_json = json.loads(coords_json)
+        print("in find cords")
+
+        # Convert the 'data' list into a list of dictionaries for easier searching
+        columns = coords_json['columns']
+        data_rows = coords_json['data']
+        data_dicts = [dict(zip(columns, row)) for row in data_rows]
+        
+        # Search for the matching unique_group_id
+        for row in data_dicts:
+            print("row is", row)
+            print("values we want", parts[1], parts[2])
+            if row.get('group') == int(parts[1]) and row.get('#') == int(parts[2]):
+                print("in row polygon")
+                latitude = row.get('Latitude')
+                longitude = row.get('Longitude')
+                prediction = row.get('Prediction')
+                cords.append((latitude, longitude, prediction))  # Append as a tuple
+    else:
+        latitude, longitude, prediction = find_coords_by_unique_group_id(coords_json, idx)
+        cords.append((latitude, longitude, prediction))  # Append as a tuple
+  
+    print(cords)
+    response = ""
     if type == 'user':
         print("in user")
         response = f"User interaction recorded for user"
     elif type == 'thumbs-up':
         print("in thumbs up")
-        if (float(prediction) > 0.0):
-            value = 1
-        else:
-            value = 0
-        update_collision_in_csv(latitude, longitude, value)
-        response = f"Collision value updated for Latitude: {latitude}, Longitude: {longitude}, thumbs up"
+        for latitude, longitude, prediction in cords:
+            if (float(prediction) > 0.0):
+                value = 1
+            else:
+                value = 0
+            update_collision_in_csv(latitude, longitude, value)
+            response = f"Collision value updated for Latitude: {latitude}, Longitude: {longitude}, thumbs up"
     elif type == 'thumbs-down':
         print("in thumbs down")
         value = -1
-        update_collision_in_csv(latitude, longitude, value)
-        response = f"Collision value updated for Latitude: {latitude}, Longitude: {longitude}, thumbs down"
+        for latitude, longitude, prediction in cords:
+            update_collision_in_csv(latitude, longitude, value)
+            response = f"Collision value updated for Latitude: {latitude}, Longitude: {longitude}, thumbs down"
     else:
         raise ValueError("Invalid interaction type.")  # Handle unexpected interaction types
     
