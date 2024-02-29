@@ -748,13 +748,15 @@ def convert_geojson_to_dataframe(geojson):
 @app.callback(
     [
         Output("coords-display-container", "children", allow_duplicate=True),  # Update the display container
-        Output("coords-json", "children", allow_duplicate=True)  # Update the JSON data
+        Output("coords-json", "children", allow_duplicate=True),  # Update the JSON data
+        Output('marker-layer', 'children', allow_duplicate=True)
     ],
     [Input("edit_control", "geojson")],  # Listen for clicks on the submit button
-    [State("coords-json", "children")],  # Maintain the state of coords-json
-    prevent_initial_call=True
+    [State("coords-json", "children"),
+     State('marker-layer', 'children')],  # Maintain the state of coords-json
+    prevent_initial_call=True   
 )
-def trigger_action_and_predict(geojson, json_coords):
+def trigger_action_and_predict(geojson, json_coords, existing_markers):
     ctx = dash.callback_context
 
     if not ctx.triggered or "features" not in geojson:
@@ -810,15 +812,103 @@ def trigger_action_and_predict(geojson, json_coords):
         #print("after merge", df_coords)
         #df_coords['Prediction'] = df_coords['Prediction_new'].combine_first(df_coords['Prediction'])
         #df_coords.drop(['Prediction_new'], axis=1, inplace=True)
-        
     
-
     table = setupDisplayTable(df_coords)
 
     # Convert updated df_coords to JSON for transmission
-    updated_json_coords = df_coords.to_json(orient='split')        
+    updated_json_coords = df_coords.to_json(orient='split')     
     
-    return table, updated_json_coords
+    
+    if not geojson or 'features' not in geojson:
+        raise PreventUpdate
+
+    # Initialize list to hold updated markers and polygons
+    updated_features = existing_markers if existing_markers else []
+
+    windSpeeds = []
+    # Loop through each feature in the GeoJSON
+    for feature in geojson['features']:
+        geom_type = feature['geometry']['type']
+        coords = feature['geometry']['coordinates']
+        if geom_type == 'Point':
+            # Handle Point geometry (Marker)
+            lon, lat = coords
+            matching_rows = df_coords[(df_coords['Latitude'] == lat) & (df_coords['Longitude'] == lon)]
+            wind_speed = fetch_wind_speed(lat, lon)  # Assume this function fetches the wind speed as a string
+            if not matching_rows.empty:
+                # Assuming there's only one match, get the prediction value
+                prediction = matching_rows.iloc[0]['Prediction']
+                tooltip_text = f"Wind Speed: {wind_speed}, Collision Risk: {prediction:.2f}%"
+            else:
+                tooltip_text = f"Wind Speed: {wind_speed}"
+                new_marker = dl.Marker(position=[lat, lon], children=[
+                dl.Tooltip(f"Wind Speed: {wind_speed}")
+            ])
+            new_marker = dl.Marker(position=[lat, lon], children=[
+                dl.Tooltip(tooltip_text)
+            ])
+            updated_features.append(new_marker)
+        elif geom_type == 'Polygon':
+            # Handle Polygon geometry
+            # Convert GeoJSON coordinates to Leaflet polygon coordinates format
+            polygon_coords = [[lat_lon[::-1] for lat_lon in coords[0]]]  # Assuming exterior ring only
+
+            print("df_coords looks like this", df_coords)
+            groupNumber = []
+            # Iterate through each ring in the polygon
+            for ring in polygon_coords:
+                # Iterate through each coordinate pair in the current ring
+                for lat, lon in ring:
+                    matching_rows = df_coords[(df_coords['Latitude'] == lat) & (df_coords['Longitude'] == lon)]
+                    if len(matching_rows) > 0:
+                        groupNumber.append(matching_rows.iloc[0]['group'])
+                    wind_speed = extract_average_wind_speed(fetch_wind_speed(lat, lon))  # Fetch wind speed for each coordinate pair
+                    windSpeeds.append(wind_speed)
+                    #avgWindSpeed = average_wind_speed(wind_speed)
+                    #print("average wind speed", avgWindSpeed, lat, lon)
+                    #windSpeeds.append(float(avgWindSpeed))  # Convert wind speed to float and add to the list
+
+            prediction_value = None
+            if(len(groupNumber) > 0):
+                distinct_element = next(iter(set(groupNumber)))
+                matching_rows = df_coords[df_coords['group'] == distinct_element]
+                prediction_value = matching_rows['Prediction'].iloc[0]
+                              
+            if (len(windSpeeds) > 0):
+                valid_speeds = [speed for speed in windSpeeds if speed is not None]
+                average_wind_speed = sum(valid_speeds) / len(valid_speeds)   
+                print("average wind speed is", average_wind_speed)       
+            else:
+                average_wind_speed = 0
+            
+            #for lon, lat in polygon_coords:
+            #    wind_speed = fetch_wind_speed(lat, lon) 
+            #    windSpeeds.append(wind_speed)
+
+            polygon_label = f"Average Wind Speed: {round(average_wind_speed)} mph, Collision Risk: {prediction_value:.2f}%"  # Customize this label as needed
+            new_polygon = dl.Polygon(
+                positions=polygon_coords,
+                children=[dl.Tooltip(polygon_label)],
+                color="#007bff",
+                fill=True,
+                fillColor="#ADD8E6",
+                fillOpacity=0.5,
+            )
+            updated_features.append(new_polygon)
+    
+    # markers = []
+    # for index, row in updated_features.iterrows():
+    #     if row['Type'] == 'Point':
+    #         marker = dl.Marker(position=[row['Latitude'], row['Longitude']], children=[
+    #             dl.Tooltip(f"Prediction: {row['Prediction']}%")
+    #         ])
+    #         markers.append(marker)
+            
+    
+
+   
+    
+    return table, updated_json_coords, updated_features
 
 def setupDisplayTable(df_coords):
          # Prepare the table for display
@@ -1304,13 +1394,13 @@ def handle_thumbs_clicks(*args):
             else:
                 value = 0
             update_collision_in_csv(latitude, longitude, value)
-            response = f"Collision value updated for Latitude: {latitude}, Longitude: {longitude}, thumbs up"
+            response = f"Collision value updated for Latitude: {latitude}, Longitude: {longitude}"
             #response = None
     elif type == 'thumbs-down':
         value = -1
         for latitude, longitude, prediction in cords:
             update_collision_in_csv(latitude, longitude, value)
-            response = f"Collision value updated for Latitude: {latitude}, Longitude: {longitude}, thumbs down"
+            response = f"Collision value updated for Latitude: {latitude}, Longitude: {longitude}"
             #response = None
     else:
         raise ValueError("Invalid interaction type.")  # Handle unexpected interaction types
