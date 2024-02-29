@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import json
+import random
 from dash import Dash, dcc, html, dash_table, Input, Output, State, callback_context
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
@@ -31,7 +32,7 @@ warnings.filterwarnings("ignore")
 
 app = Dash(
     __name__,
-    external_stylesheets=[dbc.themes.SPACELAB, dbc.icons.FONT_AWESOME],
+    external_stylesheets=[dbc.themes.SPACELAB, dbc.icons.FONT_AWESOME, dbc.icons.BOOTSTRAP],
 )
 
 """
@@ -673,7 +674,7 @@ app.layout = dbc.Container(
                             interval=1,  # in milliseconds
                             n_intervals=0,
                             max_intervals=1  # Stop after the first call
-                        )
+                        ),
                     ],
                     width=12,
                     lg=7,
@@ -873,15 +874,15 @@ def setupDisplayTable(df_coords):
         # Create a div that contains both buttons for the current row using Font Awesome icons
         button_group = html.Div([
             html.Span(html.I(className="fa-solid fa-user"), id={'type': 'user', 'index': row['unique_group_id']}, n_clicks=0, style={'display': 'none'}),
-            html.Span(html.I(className="fas fa-thumbs-up"), id={'type': 'thumbs-up', 'index': row['unique_group_id']}, n_clicks=0),
-            html.Span(html.I(className="fas fa-thumbs-down"), id={'type': 'thumbs-down', 'index': row['unique_group_id']}, n_clicks=0)
+            html.Span(html.I(className="bi bi-hand-thumbs-up"), id={'type': 'thumbs-up', 'index': row['unique_group_id']}, n_clicks=0),
+            html.Span(html.I(className="bi bi-hand-thumbs-down"), id={'type': 'thumbs-down', 'index': row['unique_group_id']}, n_clicks=0)
         ], style={'display': 'flex', 'justifyContent': 'center', 'gap': '10px'})
         
         # Add the button group to the list
         button_groups.append(button_group)
 
     # Add the list of button groups as a new column in the DataFrame
-    df_display['Buttons'] = button_groups
+    df_display['Feedback'] = button_groups
     
     table = dbc.Table.from_dataframe(df_display, striped=True, bordered=True, hover=True)
    
@@ -1282,7 +1283,8 @@ def update_forecast_plot(forecast_period_slider_value, start_year_slider_value, 
     [Input({'type': 'user', 'index': ALL}, 'n_clicks'),
      Input({'type': 'thumbs-up', 'index': ALL}, 'n_clicks'),
      Input({'type': 'thumbs-down', 'index': ALL}, 'n_clicks')],
-    [State('coords-json', 'children')]
+    [State('coords-json', 'children')],
+    prevent_initial_call=True
 )
 def handle_thumbs_clicks(*args):
     print("in handle button click")
@@ -1296,17 +1298,20 @@ def handle_thumbs_clicks(*args):
 
     button_info = json.loads(ctx.triggered[0]['prop_id'].split('.')[0])
     idx, type = button_info['index'], button_info['type']
+    button_type = button_info['type']
+    
+    latitude, longitude, prediction = find_coords_by_unique_group_id(coords_json, idx)
     
     
-    
-    latitude, longitude = find_coords_by_unique_group_id(coords_json, idx)
-        
     if type == 'user':
         print("in user")
         response = f"User interaction recorded for user"
     elif type == 'thumbs-up':
         print("in thumbs up")
-        value = 1
+        if (float(prediction) > 0.0):
+            value = 1
+        else:
+            value = 0
         update_collision_in_csv(latitude, longitude, value)
         response = f"Collision value updated for Latitude: {latitude}, Longitude: {longitude}, thumbs up"
     elif type == 'thumbs-down':
@@ -1334,10 +1339,11 @@ def find_coords_by_unique_group_id(coords_json_str, unique_group_id):
         if row.get('unique_group_id') == unique_group_id:
             latitude = row.get('Latitude')
             longitude = row.get('Longitude')
-            return latitude, longitude
+            prediction = row.get('Prediction')
+            return latitude, longitude, prediction
             
     # Return None if no match found
-    return None, None
+    return None, None, None
 
 def update_collision_in_csv(latitude, longitude, adjustment_value):
     # Load the CSV file
@@ -1361,6 +1367,71 @@ def update_collision_in_csv(latitude, longitude, adjustment_value):
     # Save the updated DataFrame back to the CSV
     df.to_csv(csv_file_path, index=False)
     return True
+
+@app.callback(
+    [Output({'type': 'thumbs-down', 'index': MATCH}, 'id'),
+     Output({'type': 'thumbs-down', 'index': MATCH}, 'children'),
+     Output({'type': 'thumbs-down', 'index': MATCH}, 'className')],
+    [Input({'type': 'thumbs-down', 'index': ALL}, 'n_clicks')],
+    [State({'type': 'thumbs-up', 'index': ALL}, 'className')],
+    prevent_initial_call=True
+)
+def update_icon(n_clicks_list, thumbs_down_class):
+    ctx = dash.callback_context
+
+    print("thumbs up class is", thumbs_down_class)
+    if not ctx.triggered:
+        return [dash.no_update, dash.no_update, dash.no_update]  # Prevent update if no buttons were clicked
+
+    # Determine which button was clicked
+    button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    button_info = json.loads(button_id)
+    idx = button_info['index']   
+ 
+    total_clicks = sum(n_clicks_list)
+    if total_clicks % 2 == 1:
+        new_id = {'type': 'thumbs-down', 'index': idx}
+        new_content = html.I(className="bi bi-hand-thumbs-down-fill")  # Example new content
+        new_class = ''  # Resetting the class
+    else:
+        new_id = {'type': 'thumbs-down', 'index': idx}
+        new_content = html.I(className="bi bi-hand-thumbs-down")  # Example new content
+        new_class = ''  # Resetting the class
+
+    return [new_id, new_content, new_class]
+
+
+@app.callback(
+    [Output({'type': 'thumbs-up', 'index': MATCH}, 'id'),
+     Output({'type': 'thumbs-up', 'index': MATCH}, 'children'),
+     Output({'type': 'thumbs-up', 'index': MATCH}, 'className')],
+    [Input({'type': 'thumbs-up', 'index': ALL}, 'n_clicks')],
+    [State({'type': 'thumbs-down', 'index': MATCH}, 'className')],
+    prevent_initial_call=True
+)
+def update_icon(n_clicks_list, thumbs_down_class):
+    ctx = dash.callback_context
+
+    print("thumbs down class is", thumbs_down_class)
+    if not ctx.triggered:
+        return [dash.no_update, dash.no_update, dash.no_update]  # Prevent update if no buttons were clicked
+
+    # Determine which button was clicked
+    button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    button_info = json.loads(button_id)
+    idx = button_info['index']   
+ 
+    total_clicks = sum(n_clicks_list)
+    if total_clicks % 2 == 1:
+        new_id = {'type': 'thumbs-up', 'index': idx}
+        new_content = html.I(className="bi bi-hand-thumbs-up-fill")  # Example new content
+        new_class = ''  # Resetting the class
+    else:
+        new_id = {'type': 'thumbs-up', 'index': idx}
+        new_content = html.I(className="bi bi-hand-thumbs-up")  # Example new content
+        new_class = ''  # Resetting the class
+
+    return [new_id, new_content, new_class]
 
 if __name__ == "__main__":
     app.run_server(debug=True, port=8060)
