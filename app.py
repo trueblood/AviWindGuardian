@@ -27,6 +27,7 @@ import warnings
 from datetime import datetime, timedelta
 from prophet import Prophet
 from dash.dependencies import Input, Output, State, MATCH, ALL
+import requests
 
 warnings.filterwarnings("ignore")
 
@@ -88,6 +89,7 @@ def make_map():
     """
     return dl.Map(center=[39.5501, -105.7821], zoom=6, children=[
         dl.TileLayer(), 
+        dl.LayerGroup(id="marker-layer"), 
         dl.FeatureGroup([
             dl.EditControl(
                 id="edit_control", 
@@ -1259,6 +1261,7 @@ def update_forecast_plot(forecast_period_slider_value, start_year_slider_value, 
                 aggregated_data = pd.concat([aggregated_data, new_row_df], ignore_index=True)
                 print("added new collision points to existing date")
 
+        print("aggreated data", aggregated_data)
         print("before getting model")
         # Prophet forecasting
         model = Prophet()
@@ -1466,6 +1469,56 @@ def update_icon(n_clicks_list, thumbs_down_class):
         new_class = ''  # Resetting the class
 
     return [new_id, new_content, new_class]
+
+# Function to fetch wind speed from the National Weather Service API
+def fetch_wind_speed(lat, lon):
+    url = f"https://api.weather.gov/points/{lat},{lon}"
+    try:
+        response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
+        forecast_url = response.json()['properties']['forecast']
+        forecast_response = requests.get(forecast_url, headers={'User-Agent': 'Mozilla/5.0'})
+        current_forecast = forecast_response.json()['properties']['periods'][0]
+        wind_speed = current_forecast['windSpeed']
+        return wind_speed
+    except Exception as e:
+        print(f"Error fetching wind speed: {e}")
+        return "Error"
+
+@app.callback(
+    Output('marker-layer', 'children'),
+    [Input("edit_control", "geojson")],
+    [State('marker-layer', 'children')]
+)
+def update_markers(geojson_data, existing_markers):
+    print("in update markers")
+    if not geojson_data or 'features' not in geojson_data:
+        raise PreventUpdate
+    
+    # Initialize list to hold updated markers
+    updated_markers = existing_markers if existing_markers else []
+
+    # Loop through each feature in the GeoJSON
+    for feature in geojson_data['features']:
+        # Extract the geometry type and coordinates
+        geom_type = feature['geometry']['type']
+        coords = feature['geometry']['coordinates']
+
+        # Check if the feature is a Point (marker)
+        if geom_type == 'Point':
+            lon, lat = coords
+            # Fetch wind speed for the marker's coordinates
+            wind_speed = fetch_wind_speed(lat, lon)
+
+            # Create a new marker with the fetched wind speed in its tooltip
+            new_marker = dl.Marker(position=[lat, lon], children=[
+                dl.Tooltip(f"Wind Speed: {wind_speed}")
+            ])
+            
+            # Append the new marker to the updated markers list
+            updated_markers.append(new_marker)
+
+    return updated_markers
+
 
 if __name__ == "__main__":
     app.run_server(debug=True, port=8060)
