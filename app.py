@@ -668,10 +668,10 @@ tabs = dbc.Tabs(
         dbc.Tab(
             [cords_card, slider_card_forecast],
             tab_id="tab-2",
-            label="Play",
+            label="Plot Points",
             className="pb-4",
         ),
-        dbc.Tab([model_training_card], tab_id="tab-3", label="Training")
+        dbc.Tab([model_training_card], tab_id="tab-3", label="Model Update")
     ],
     id="tabs",
     active_tab="tab-2",
