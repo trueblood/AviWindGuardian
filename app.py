@@ -67,6 +67,15 @@ learn_text = dcc.Markdown(
     """
 )
 
+learn_text_model_training = dcc.Markdown(
+    """
+     This page lets you train both the Random Forest and Forecasting models. 
+     If there is new turbine collision data to train on, you want to click the 'Train Random Forest Model' button. 
+     Else, if you want to train the Forecasting model on known bird collisions with date for turbines on updated data, click the 'Train Forecasting Model' button. 
+     Or, if you're having troubleshooting issues, retraining the models is usually a fix.
+    """
+)
+
 footer = html.Div(
     dcc.Markdown(
         """
@@ -611,11 +620,35 @@ slider_card_forecast = dbc.Card(
 model_training_card = dbc.Card(
     [
         dbc.CardHeader("Model Training"),
-        html.Button('Train Random Forest Model', id='train-button-random-forest', n_clicks=0),
-        html.Button('Train Forecasting Model', id='train-button-forecast', n_clicks=0),
-        html.Div(id='output-container-button'),
-        html.Div(id='train-status'),
-        html.Div(id='model-status')
+        
+        dbc.CardBody([
+            # Instructional Div
+            html.Div([
+               html.P(learn_text_model_training)
+            ], className="mb-4"),  # Adding some bottom margin for spacing
+            #html.Br(),
+            # Training buttons with Block style
+            # html.Div(
+            #     [   
+            #         dbc.Button("Train Random Forest Model", id='train-button-random-forest', n_clicks=0, color="primary", className="me-1"),
+            #         dbc.Button("Train Forecasting Model", id='train-button-forecast', n_clicks=0, color="primary", className="me-1"),
+            #     ],
+            #     className="d-grid gap-2",
+            # ),
+            html.Br(),
+            # Output and Status Divs
+            html.Div(id='model-status'),
+            # Training Status Table
+            dbc.Table(
+                [html.Thead(html.Tr([html.Th("Machine Learning Models"), html.Th("Status")]))] +
+                [html.Tbody([html.Tr([html.Td(dbc.Button("Train Random Forest Model", id='train-button-random-forest', n_clicks=0, color="primary", className="me-1, btn-table-width")), html.Td(html.Div(id='train-status', children="Not Training"))]),
+                             html.Tr([html.Td(dbc.Button("Train Forecasting Model", id='train-button-forecast', n_clicks=0, color="primary", className="me-1, btn-table-width")), html.Td(html.Div(id='output-container-button', children="Not Training"))])])],
+                bordered=True,  # Add borders to the table for clarity
+                hover=True,  # Enable hover effect for table rows
+                responsive=True,  # Make the table responsive
+                striped=False,  # Zebra-striping for table rows
+            ),
+        ])
     ],
     className="mt-4",
 )
@@ -668,8 +701,9 @@ app.layout = dbc.Container(
                     id="loading-icon",
                     children=[html.Div(id="loading-output")],
                     type="default", # This determines the style of the loading spinner
-                    fullscreen=True,
-                ))),
+                    )
+                   )
+                ),
         dbc.Row(
             [
                 dbc.Col(tabs, width=12, lg=5, className="mt-4 border"),
@@ -1030,9 +1064,9 @@ def create_row(group, counter, label, lat, lon, unique_group_id, windSpeed):
 def btn_TrainModel(n_clicks):
     if n_clicks > 0:
         trainModel()
-        return 'Model trained.'
+        return 'Model Trained Successfully'
     else:
-        return 'Button not clicked yet.'
+        return 'Not Training'
 
 def trainModel(): 
     df = pd.read_csv('datasets/dataset.csv')
