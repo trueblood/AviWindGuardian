@@ -14,3 +14,11 @@ blockquote {
     margin-bottom: 2rem;
     margin-left: 0rem;
 }
+
+.leaflet-draw-edit-remove {
+  display: none !important;
+}
+
+.btn-table-width {
+  width: 100%; /* Makes the button fill the cell */
+}

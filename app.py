@@ -67,6 +67,15 @@ learn_text = dcc.Markdown(
     """
 )
 
+learn_text_model_training = dcc.Markdown(
+    """
+     This page lets you train both the Random Forest and Forecasting models. 
+     If there is new turbine collision data to train on, you want to click the 'Train Random Forest Model' button. 
+     Else, if you want to train the Forecasting model on known bird collisions with date for turbines on updated data, click the 'Train Forecasting Model' button. 
+     Or, if you're having troubleshooting issues, retraining the models is usually a fix.
+    """
+)
+
 footer = html.Div(
     dcc.Markdown(
         """
@@ -91,10 +100,12 @@ def make_map():
     return dl.Map(center=[39.5501, -105.7821], zoom=6, children=[
         dl.TileLayer(), 
         dl.LayerGroup(id="marker-layer"), 
+        dl.GeoJSON(id="geojson"),
+        dl.EasyButton(icon="fa-trash", title="Clear All Marker Points", id="btn"),
         dl.FeatureGroup([
             dl.EditControl(
                 id="edit_control", 
-                position="topright",
+                position="topleft",
                 draw={
                     "polyline": False,  # Disable line drawing
                     "polygon": True,    # Keep polygon drawing
@@ -104,7 +115,7 @@ def make_map():
                     "circlemarker": False # Disable circlemarker drawing
                 }
             )
-        ])
+        ], id="feature-group")
     ], style={'width': '100%', 'height': '50vh', "display": "inline-block"}, id="map")
 
 
@@ -609,11 +620,35 @@ slider_card_forecast = dbc.Card(
 model_training_card = dbc.Card(
     [
         dbc.CardHeader("Model Training"),
-        html.Button('Train Random Forest Model', id='train-button-random-forest', n_clicks=0),
-        html.Button('Train Forecasting Model', id='train-button-forecast', n_clicks=0),
-        html.Div(id='output-container-button'),
-        html.Div(id='train-status'),
-        html.Div(id='model-status')
+        
+        dbc.CardBody([
+            # Instructional Div
+            html.Div([
+               html.P(learn_text_model_training)
+            ], className="mb-4"),  # Adding some bottom margin for spacing
+            #html.Br(),
+            # Training buttons with Block style
+            # html.Div(
+            #     [   
+            #         dbc.Button("Train Random Forest Model", id='train-button-random-forest', n_clicks=0, color="primary", className="me-1"),
+            #         dbc.Button("Train Forecasting Model", id='train-button-forecast', n_clicks=0, color="primary", className="me-1"),
+            #     ],
+            #     className="d-grid gap-2",
+            # ),
+            html.Br(),
+            # Output and Status Divs
+            html.Div(id='model-status'),
+            # Training Status Table
+            dbc.Table(
+                [html.Thead(html.Tr([html.Th("Machine Learning Models"), html.Th("Status")]))] +
+                [html.Tbody([html.Tr([html.Td(dbc.Button("Train Random Forest Model", id='train-button-random-forest', n_clicks=0, color="primary", className="me-1, btn-table-width")), html.Td(html.Div(id='train-status', children="Not Training"))]),
+                             html.Tr([html.Td(dbc.Button("Train Forecasting Model", id='train-button-forecast', n_clicks=0, color="primary", className="me-1, btn-table-width")), html.Td(html.Div(id='output-container-button', children="Not Training"))])])],
+                bordered=True,  # Add borders to the table for clarity
+                hover=True,  # Enable hover effect for table rows
+                responsive=True,  # Make the table responsive
+                striped=False,  # Zebra-striping for table rows
+            ),
+        ])
     ],
     className="mt-4",
 )
@@ -658,8 +693,17 @@ app.layout = dbc.Container(
                     "AviWind Guardian",
                     className="text-center bg-primary text-white p-2",
                 ),
-            )
+            ),
         ),
+        dbc.Row(
+                dbc.Col(
+                   dcc.Loading(
+                    id="loading-icon",
+                    children=[html.Div(id="loading-output")],
+                    type="default", # This determines the style of the loading spinner
+                    )
+                   )
+                ),
         dbc.Row(
             [
                 dbc.Col(tabs, width=12, lg=5, className="mt-4 border"),
@@ -748,11 +792,13 @@ def convert_geojson_to_dataframe(geojson):
 @app.callback(
     [
         Output("coords-display-container", "children", allow_duplicate=True),  # Update the display container
-        Output("coords-json", "children", allow_duplicate=True)  # Update the JSON data
+        Output("coords-json", "children", allow_duplicate=True),  # Update the JSON data
+        Output('marker-layer', 'children', allow_duplicate=True),
+        Output("loading-output", "children")
     ],
     [Input("edit_control", "geojson")],  # Listen for clicks on the submit button
     [State("coords-json", "children")],  # Maintain the state of coords-json
-    prevent_initial_call=True
+    prevent_initial_call=True   
 )
 def trigger_action_and_predict(geojson, json_coords):
     ctx = dash.callback_context
@@ -769,7 +815,7 @@ def trigger_action_and_predict(geojson, json_coords):
     #else:
     #    df_coords = pd.DataFrame(columns=["group", "#", "Type", "Latitude", "Longitude", "Prediction"])
 
-    df_coords = pd.DataFrame(columns=["group", "#", "Type", "Latitude", "Longitude", "Prediction"])
+    df_coords = pd.DataFrame(columns=["group", "#", "Type", "Latitude", "Longitude", "Prediction", "Wind Speed"])
     new_rows = []  # To hold new data from geojson
 
     current_group = 1  # Initialize group counter
@@ -810,18 +856,107 @@ def trigger_action_and_predict(geojson, json_coords):
         #print("after merge", df_coords)
         #df_coords['Prediction'] = df_coords['Prediction_new'].combine_first(df_coords['Prediction'])
         #df_coords.drop(['Prediction_new'], axis=1, inplace=True)
-        
     
-
     table = setupDisplayTable(df_coords)
 
     # Convert updated df_coords to JSON for transmission
-    updated_json_coords = df_coords.to_json(orient='split')        
+    updated_json_coords = df_coords.to_json(orient='split')     
     
-    return table, updated_json_coords
+    
+    if not geojson or 'features' not in geojson:
+        raise PreventUpdate
+
+    # Initialize list to hold updated markers and polygons
+    
+    updated_features = []
+
+    windSpeeds = []
+    # Loop through each feature in the GeoJSON
+    for feature in geojson['features']:
+        geom_type = feature['geometry']['type']
+        coords = feature['geometry']['coordinates']
+        if geom_type == 'Point':
+            # Handle Point geometry (Marker)
+            lon, lat = coords
+            matching_rows = df_coords[(df_coords['Latitude'] == lat) & (df_coords['Longitude'] == lon)]
+            wind_speed = fetch_wind_speed(lat, lon)  # Assume this function fetches the wind speed as a string
+            if not matching_rows.empty:
+                # Assuming there's only one match, get the prediction value
+                prediction = matching_rows.iloc[0]['Prediction']
+                tooltip_text = f"Wind Speed: {wind_speed}, Collision Risk: {prediction:.2f}%"
+            else:
+                tooltip_text = f"Wind Speed: {wind_speed}"
+                new_marker = dl.Marker(position=[lat, lon], children=[
+                dl.Tooltip(f"Wind Speed: {wind_speed}")
+            ])
+            new_marker = dl.Marker(position=[lat, lon], children=[
+                dl.Tooltip(tooltip_text)
+            ])
+            updated_features.append(new_marker)
+        elif geom_type == 'Polygon':
+            # Handle Polygon geometry
+            # Convert GeoJSON coordinates to Leaflet polygon coordinates format
+            polygon_coords = [[lat_lon[::-1] for lat_lon in coords[0]]]  # Assuming exterior ring only
+
+            print("df_coords looks like this", df_coords)
+            groupNumber = []
+            # Iterate through each ring in the polygon
+            for ring in polygon_coords:
+                # Iterate through each coordinate pair in the current ring
+                for lat, lon in ring:
+                    matching_rows = df_coords[(df_coords['Latitude'] == lat) & (df_coords['Longitude'] == lon)]
+                    if len(matching_rows) > 0:
+                        groupNumber.append(matching_rows.iloc[0]['group'])
+                    wind_speed = extract_average_wind_speed(fetch_wind_speed(lat, lon))  # Fetch wind speed for each coordinate pair
+                    windSpeeds.append(wind_speed)
+                    #avgWindSpeed = average_wind_speed(wind_speed)
+                    #print("average wind speed", avgWindSpeed, lat, lon)
+                    #windSpeeds.append(float(avgWindSpeed))  # Convert wind speed to float and add to the list
+
+            prediction_value = None
+            if(len(groupNumber) > 0):
+                distinct_element = next(iter(set(groupNumber)))
+                matching_rows = df_coords[df_coords['group'] == distinct_element]
+                prediction_value = matching_rows['Prediction'].iloc[0]
+                              
+            if (len(windSpeeds) > 0):
+                valid_speeds = [speed for speed in windSpeeds if speed is not None]
+                average_wind_speed = sum(valid_speeds) / len(valid_speeds)   
+                print("average wind speed is", average_wind_speed)       
+            else:
+                average_wind_speed = 0
+            
+            #for lon, lat in polygon_coords:
+            #    wind_speed = fetch_wind_speed(lat, lon) 
+            #    windSpeeds.append(wind_speed)
+
+            polygon_label = f"Average Wind Speed: {round(average_wind_speed)} mph, Collision Risk: {prediction_value:.2f}%"  # Customize this label as needed
+            new_polygon = dl.Polygon(
+                positions=polygon_coords,
+                children=[dl.Tooltip(polygon_label)],
+                color="#007bff",
+                fill=True,
+                fillColor="#ADD8E6",
+                fillOpacity=0.5,
+            )
+            updated_features.append(new_polygon)
+    
+    # markers = []
+    # for index, row in updated_features.iterrows():
+    #     if row['Type'] == 'Point':
+    #         marker = dl.Marker(position=[row['Latitude'], row['Longitude']], children=[
+    #             dl.Tooltip(f"Prediction: {row['Prediction']}%")
+    #         ])
+    #         markers.append(marker)
+            
+    
+
+   
+    
+    return table, updated_json_coords, updated_features, None
 
 def setupDisplayTable(df_coords):
-         # Prepare the table for display
+    # Prepare the table for display
     if 'group' in df_coords.columns and '#' in df_coords.columns:
         df_display = df_coords.drop(columns=['group', '#'])
     else:
@@ -837,15 +972,19 @@ def setupDisplayTable(df_coords):
         for index, row in df_display.iterrows():
             if index in first_rows:
                 prediction_value = row['Collision Risk (%)']
+                windSpeed = fetch_wind_speed(row['Latitude'], row['Longitude'])
                 if pd.isna(prediction_value):
                     # If the prediction value is NaN, display 'Pending'
                     df_display.at[index, 'Collision Risk (%)'] = 'Pending'
+                    df_display.at[index, 'Wind Speed'] = windSpeed
                 else:
                     # Format the first row of each group with the percentage value
                     df_display.at[index, 'Collision Risk (%)'] = f"{prediction_value:.2f}%"
+                    df_display.at[index, 'Wind Speed'] = windSpeed
             else:
                 # Leave the collision risk percentage blank for non-first rows in each group
                 df_display.at[index, 'Collision Risk (%)'] = ''
+                df_display.at[index, 'Wind Speed'] = ''
         
     if 'Type' in df_display.columns:
         df_display = df_display.rename(columns={'Type': 'Marker Type'})
@@ -890,7 +1029,8 @@ def process_geometry(geometry, new_rows, current_group, current_counter):
     if geom_type == "Point":
         lat, lon = coords[1], coords[0]
         unique_group_id = f"{geom_type}_{current_group}_{current_counter}"
-        row = create_row(current_group, current_counter, geom_type, lat, lon, unique_group_id)
+        windSpeed = fetch_wind_speed(lat, lon)
+        row = create_row(current_group, current_counter, geom_type, lat, lon, unique_group_id, windSpeed)
         new_rows.append(row)
         current_group += 1  # Increment group for each new Point
     elif geom_type == "Polygon":
@@ -898,20 +1038,22 @@ def process_geometry(geometry, new_rows, current_group, current_counter):
         for index, coord in enumerate(coords[0]):
             lat, lon = coord[1], coord[0]
             label = "Polygon" if index == 0 else ""
+            windSpeed = fetch_wind_speed(lat, lon)
             unique_group_id = f"{label}_{current_group}_{current_counter}" if index == 0 else ""  # Construct unique_group_id for the first vertex or leave blank for others
-            row = create_row(current_group, current_counter, label, lat, lon, unique_group_id)
+            row = create_row(current_group, current_counter, label, lat, lon, unique_group_id, windSpeed)
             new_rows.append(row)
         current_group += 1
     return current_group, current_counter
 
-def create_row(group, counter, label, lat, lon, unique_group_id):
+def create_row(group, counter, label, lat, lon, unique_group_id, windSpeed):
     return {
         "group": group,
         "#": counter,
         "Type": label,
         "Latitude": lat,
         "Longitude": lon,
-        "Prediction": "Pending",  # Placeholder for prediction
+        "Prediction": "Pending",  # Placeholder for prediction,
+        "Wind Speed": windSpeed,
         "unique_group_id": unique_group_id 
     }
 
@@ -922,9 +1064,9 @@ def create_row(group, counter, label, lat, lon, unique_group_id):
 def btn_TrainModel(n_clicks):
     if n_clicks > 0:
         trainModel()
-        return 'Model trained.'
+        return 'Model Trained Successfully'
     else:
-        return 'Button not clicked yet.'
+        return 'Not Training'
 
 def trainModel(): 
     df = pd.read_csv('datasets/dataset.csv')
@@ -1304,13 +1446,13 @@ def handle_thumbs_clicks(*args):
             else:
                 value = 0
             update_collision_in_csv(latitude, longitude, value)
-            response = f"Collision value updated for Latitude: {latitude}, Longitude: {longitude}, thumbs up"
+            response = f"Collision value updated for Latitude: {latitude}, Longitude: {longitude}"
             #response = None
     elif type == 'thumbs-down':
         value = -1
         for latitude, longitude, prediction in cords:
             update_collision_in_csv(latitude, longitude, value)
-            response = f"Collision value updated for Latitude: {latitude}, Longitude: {longitude}, thumbs down"
+            response = f"Collision value updated for Latitude: {latitude}, Longitude: {longitude}"
             #response = None
     else:
         raise ValueError("Invalid interaction type.")  # Handle unexpected interaction types
@@ -1438,73 +1580,81 @@ def fetch_wind_speed(lat, lon):
         print(f"Error fetching wind speed: {e}")
         return "Error"
 
-@app.callback(
-    Output('marker-layer', 'children'),
-    [Input("edit_control", "geojson")],
-    [State('marker-layer', 'children')]
-)
-def update_markers(geojson_data, existing_markers):
-    if not geojson_data or 'features' not in geojson_data:
-        raise PreventUpdate
+# @app.callback(
+#     Output('marker-layer', 'children'),
+#     [Input("edit_control", "geojson"),
+#      Input("marker-layer", "geojson")
+#      ],
+    
+#     #[State('marker-layer', 'children')]
+# )
+# def update_markers(geojson_data, existing_markers):
+#     if not geojson_data or 'features' not in geojson_data:
+#         raise PreventUpdate
 
-    # Initialize list to hold updated markers and polygons
-    updated_features = existing_markers if existing_markers else []
+#     # Initialize list to hold updated markers and polygons
+#     updated_features = existing_markers if existing_markers else []
 
-    windSpeeds = []
-    # Loop through each feature in the GeoJSON
-    for feature in geojson_data['features']:
-        geom_type = feature['geometry']['type']
-        coords = feature['geometry']['coordinates']
+#     windSpeeds = []
+#     # Loop through each feature in the GeoJSON
+#     for feature in geojson_data['features']:
+#         geom_type = feature['geometry']['type']
+#         coords = feature['geometry']['coordinates']
 
-        if geom_type == 'Point':
-            # Handle Point geometry (Marker)
-            lon, lat = coords
-            wind_speed = fetch_wind_speed(lat, lon)  # Assume this function fetches the wind speed as a string
-            new_marker = dl.Marker(position=[lat, lon], children=[
-                dl.Tooltip(f"Wind Speed: {wind_speed}")
-            ])
-            updated_features.append(new_marker)
-        elif geom_type == 'Polygon':
-            # Handle Polygon geometry
-            # Convert GeoJSON coordinates to Leaflet polygon coordinates format
-            polygon_coords = [[lat_lon[::-1] for lat_lon in coords[0]]]  # Assuming exterior ring only
+#         if geom_type == 'Point':
+#             # Handle Point geometry (Marker)
+#             lon, lat = coords
+#             wind_speed = fetch_wind_speed(lat, lon)  # Assume this function fetches the wind speed as a string
+#             #new_marker = dl.Marker(position=[lat, lon], children=[
+#             #    dl.Popup(content=f"This is <b>Wind Speed: {wind_speed}</b>!")
+#             #])
+#             #icon = {'className': 'custom-icon', 'html': f'<b>{wind_speed} mph</b>'}  # Example icon definition
+#             #new_marker = dl.DivMarker(position=[lat, lon], iconOptions=icon)
+#             new_marker = dl.Marker(position=[lat, lon], children=[
+#                 dl.Popup(content=f"This is <b>Wind Speed: {wind_speed}</b>!")
+#             ])
+#             updated_features.append(new_marker)
+#         elif geom_type == 'Polygon':
+#             # Handle Polygon geometry
+#             # Convert GeoJSON coordinates to Leaflet polygon coordinates format
+#             polygon_coords = [[lat_lon[::-1] for lat_lon in coords[0]]]  # Assuming exterior ring only
            
 
-            # Iterate through each ring in the polygon
-            for ring in polygon_coords:
-                # Iterate through each coordinate pair in the current ring
-                for lat, lon in ring:
-                    wind_speed = extract_average_wind_speed(fetch_wind_speed(lat, lon))  # Fetch wind speed for each coordinate pair
-                    windSpeeds.append(wind_speed)
-                    #avgWindSpeed = average_wind_speed(wind_speed)
-                    #print("average wind speed", avgWindSpeed, lat, lon)
-                    #windSpeeds.append(float(avgWindSpeed))  # Convert wind speed to float and add to the list
+#             # Iterate through each ring in the polygon
+#             for ring in polygon_coords:
+#                 # Iterate through each coordinate pair in the current ring
+#                 for lat, lon in ring:
+#                     wind_speed = extract_average_wind_speed(fetch_wind_speed(lat, lon))  # Fetch wind speed for each coordinate pair
+#                     windSpeeds.append(wind_speed)
+#                     #avgWindSpeed = average_wind_speed(wind_speed)
+#                     #print("average wind speed", avgWindSpeed, lat, lon)
+#                     #windSpeeds.append(float(avgWindSpeed))  # Convert wind speed to float and add to the list
 
 
 
-            if (len(windSpeeds) > 0):
-                valid_speeds = [speed for speed in windSpeeds if speed is not None]
-                average_wind_speed = sum(valid_speeds) / len(valid_speeds)   
-                print("average wind speed is", average_wind_speed)       
-            else:
-                average_wind_speed = 0
+#             if (len(windSpeeds) > 0):
+#                 valid_speeds = [speed for speed in windSpeeds if speed is not None]
+#                 average_wind_speed = sum(valid_speeds) / len(valid_speeds)   
+#                 print("average wind speed is", average_wind_speed)       
+#             else:
+#                 average_wind_speed = 0
             
-            #for lon, lat in polygon_coords:
-            #    wind_speed = fetch_wind_speed(lat, lon) 
-            #    windSpeeds.append(wind_speed)
+#             #for lon, lat in polygon_coords:
+#             #    wind_speed = fetch_wind_speed(lat, lon) 
+#             #    windSpeeds.append(wind_speed)
 
-            polygon_label = f"Average Wind Speed: {round(average_wind_speed)} mph"  # Customize this label as needed
-            new_polygon = dl.Polygon(
-                positions=polygon_coords,
-                children=[dl.Tooltip(polygon_label)],
-                color="#007bff",
-                fill=True,
-                fillColor="#ADD8E6",
-                fillOpacity=0.5,
-            )
-            updated_features.append(new_polygon)
+#             polygon_label = f"Average Wind Speed: {round(average_wind_speed)} mph"  # Customize this label as needed
+#             new_polygon = dl.Polygon(
+#                 positions=polygon_coords,
+#                 children=[dl.Popup(content=f"This is <b>{polygon_label}</b>!")],
+#                 color="#007bff",
+#                 fill=True,
+#                 fillColor="#ADD8E6",
+#                 fillOpacity=0.5,
+#             )
+#             updated_features.append(new_polygon)
 
-    return updated_features
+#     return updated_features
 
 def average_wind_speed(wind_speeds):
     """
@@ -1530,6 +1680,36 @@ def extract_average_wind_speed(wind_speed_str):
         return sum(numbers) / len(numbers)
     else:
         return None  # Or some default value
+
+
+
+# Trigger mode (edit) + action (remove all)
+@app.callback(Output("edit_control", "editToolbar"), Input("btn", "n_clicks"))
+def trigger_action(n_clicks):   
+    return dict(mode="remove", action="clear all", n_clicks=n_clicks)  # include n_click to ensure prop changes
+
+
+
+
+# @app.callback(
+#     Output("marker-layer", "children"),
+#     [Input("map", "geojson")],
+# )
+# def update_markers(geojson):
+#     print("in update markers")
+#     # Parse the GeoJSON to update markers
+#     if not geojson or not geojson['features']:
+#         return []  # Return an empty list if there are no features
+
+#     markers = []
+#     for feature in geojson['features']:
+#         if feature['geometry']['type'] == 'Point':
+#             coords = feature['geometry']['coordinates']
+#             marker = dl.Marker(position=[coords[1], coords[0]])
+#             markers.append(marker)
+    
+#     return []
+
 
 if __name__ == "__main__":
     app.run_server(debug=True, port=8060)
