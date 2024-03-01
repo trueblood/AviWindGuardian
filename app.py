@@ -79,11 +79,10 @@ learn_text_model_training = dcc.Markdown(
 footer = html.Div(
     dcc.Markdown(
         """
-         This information is intended solely as general information for educational
-        and entertainment purposes only and is not a substitute for professional advice and
-        services from qualified financial services providers familiar with your financial
-        situation.    
-        """
+        AviWind Guardian provides this content for informational purposes only, aiming to balance renewable energy and avian conservation through machine learning, 
+        without guaranteeing the information's accuracy or serving as a substitute for professional advice, and disclaims liability for decisions made based on its use.
+        """,
+        style={'font-size': '8pt'}
     ),
     className="p-2 mt-5 bg-primary text-white small",
 )
@@ -620,7 +619,6 @@ slider_card_forecast = dbc.Card(
 model_training_card = dbc.Card(
     [
         dbc.CardHeader("Model Training"),
-        
         dbc.CardBody([
             # Instructional Div
             html.Div([
