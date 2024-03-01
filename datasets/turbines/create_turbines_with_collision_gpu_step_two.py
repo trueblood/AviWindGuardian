@@ -112,6 +112,19 @@ def get_bird_timestamp_by_index(index, bird_data_df):
     else:
         return None  # Or raise an error, depending on your preference
     
+# Define function to load the last processed bird index
+def load_last_processed_bird_index():
+    if os.path.exists('last_processed_bird_index.txt'):
+        with open('last_processed_bird_index.txt', 'r') as file:
+            return int(file.read())
+    else:
+        return 0  # Start from the beginning if the file doesn't exist
+
+# Define function to save the last processed bird index
+def save_last_processed_bird_index(index):
+    with open('last_processed_bird_index.txt', 'w') as file:
+        file.write(str(index))
+    
 # Load Data
 wind_turbines_df = pd.read_csv('wind_turbine_location_20231128.csv')
 bird_data_df = pd.read_csv('combined_bird_data.csv')
@@ -127,62 +140,64 @@ bird_coords = bird_data_df[['Longitude', 'Latitude']].values.astype(np.float32)
 #print('bird cords:', bird_coords)
 #print('turbine cords:', turbine_coords)
 
+last_processed_bird_index = load_last_processed_bird_index()
+collisions_csv_filename = 'detailed_wind_turbine_collisions.csv'
+
 # Example of processing collisions for each bird
 collision_threshold = 1.0  # Collision threshold in miles
 collisions = []
 
-for bird_index, bird_coord in enumerate(bird_coords):
-    print(bird_coord)
+total_birds = len(bird_coords)
+
+for bird_index in range(last_processed_bird_index, len(bird_coords)):
+    bird_coord = bird_coords[bird_index]
     distances = process_batch(turbine_coords, bird_coord, batch_size=1024)
-    
     collision_indices = np.where(distances <= collision_threshold)[0]
     
     for idx in collision_indices:
         turbine_longitude, turbine_latitude = turbine_coords[idx]
-        
-        # Fetch species and timestamp based on bird_index or another method
-        # This is pseudocode; replace with your actual method of retrieving species and timestamp
-        bird_species = get_bird_species_by_index(bird_index,bird_data_df)
+        bird_species = get_bird_species_by_index(bird_index, bird_data_df)
         bird_timestamp = get_bird_timestamp_by_index(bird_index, bird_data_df)
         
-        collisions.append({
-            'Species': bird_species,
-            'Turbine_Longitude': turbine_longitude,
-            'Turbine_Latitude': turbine_latitude,
-            'Timestamp': bird_timestamp,
-            'Distance': distances[idx]
-        })
-# Convert collisions to DataFrame and save
-collisions_df = pd.DataFrame(collisions)
-print(collisions_df.head())
-collisions_df.to_csv('detailed_wind_turbine_collisions.csv', index=False)
+        # Append collision record to the CSV file
+        with open(collisions_csv_filename, 'a') as file:
+            file.write(f"{bird_species},{turbine_longitude},{turbine_latitude},{bird_timestamp},{distances[idx]}\n")
+    
+    # Save the current bird index for resuming after a crash
+    save_last_processed_bird_index(bird_index + 1)
+    
+    # Calculate and print progress percentage
+    progress_percentage = (bird_index + 1) / total_birds * 100
+    print(f"Progress: {progress_percentage:.2f}%")
 
-collision_csv_filename = 'wind_turbines_with_collisions.csv'
+print("All collisions processed and saved.")
 
-# Calculate collisions per turbine location, handling the case where no collisions are found
-if not collisions_df.empty:
-    print("collisions_df is not empty")
-    collision_counts = collisions_df.groupby(['Turbine_Longitude', 'Turbine_Latitude']).size().reset_index(name='Collision_Count')
-    # Merge this summary back into the original wind_turbines_df
-    # Use left merge to ensure all turbines are included, even those without collisions
-    wind_turbines_df = wind_turbines_df.merge(collision_counts, how='left', left_on=['Longitude', 'Latitude'], right_on=['Turbine_Longitude', 'Turbine_Latitude'])
+# collision_csv_filename = 'wind_turbines_with_collisions.csv'
 
-    # Fill NaN values in Collision_Count with 0 to indicate no collisions
-    wind_turbines_df['Collision_Count'] = wind_turbines_df['Collision_Count'].fillna(0)
+# # Calculate collisions per turbine location, handling the case where no collisions are found
+# if not collisions_df.empty:
+#     print("collisions_df is not empty")
+#     collision_counts = collisions_df.groupby(['Turbine_Longitude', 'Turbine_Latitude']).size().reset_index(name='Collision_Count')
+#     # Merge this summary back into the original wind_turbines_df
+#     # Use left merge to ensure all turbines are included, even those without collisions
+#     wind_turbines_df = wind_turbines_df.merge(collision_counts, how='left', left_on=['Longitude', 'Latitude'], right_on=['Turbine_Longitude', 'Turbine_Latitude'])
 
-    # Keep only the required columns
-    wind_turbines_df = wind_turbines_df[['Longitude', 'Latitude', 'Collision_Count']]
+#     # Fill NaN values in Collision_Count with 0 to indicate no collisions
+#     wind_turbines_df['Collision_Count'] = wind_turbines_df['Collision_Count'].fillna(0)
 
-    # Save the enriched wind_turbines_df with collision counts
-    wind_turbines_df.to_csv(collision_csv_filename, index=False)
-else:
-    # Create a DataFrame with all turbines and a Collision_Count of 0 if no collisions were found
-    collision_counts = pd.DataFrame(turbine_coords, columns=['Turbine_Longitude', 'Turbine_Latitude'])
-    collision_counts['Collision_Count'] = 0
-    # Save the collision counts to a CSV file
-    collision_counts.to_csv(collision_csv_filename, index=False)
+#     # Keep only the required columns
+#     wind_turbines_df = wind_turbines_df[['Longitude', 'Latitude', 'Collision_Count']]
 
-print("Collision counts saved to 'wind_turbines_with_collisions.csv'.")
+#     # Save the enriched wind_turbines_df with collision counts
+#     wind_turbines_df.to_csv(collision_csv_filename, index=False)
+# else:
+#     # Create a DataFrame with all turbines and a Collision_Count of 0 if no collisions were found
+#     collision_counts = pd.DataFrame(turbine_coords, columns=['Turbine_Longitude', 'Turbine_Latitude'])
+#     collision_counts['Collision_Count'] = 0
+#     # Save the collision counts to a CSV file
+#     collision_counts.to_csv(collision_csv_filename, index=False)
+
+# print("Collision counts saved to 'wind_turbines_with_collisions.csv'.")
 
 end_time = time.time()
 print(f"Process completed in {end_time - start_time} seconds.")
