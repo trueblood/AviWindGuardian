@@ -5,7 +5,7 @@ from sklearn.datasets import load_iris
 from sklearn.model_selection import KFold
 from sklearn.metrics import accuracy_score
 #from decisiontreeclassifier import DecisionTreeClassifier when running locally
-from decisiontreeclassifier import DecisionTreeClassifier #when running dash app
+from src.decisiontreeclassifier import DecisionTreeClassifier #when running dash app
 from sklearn.preprocessing import LabelEncoder
 import pandas as pd
 from sklearn.model_selection import ParameterGrid

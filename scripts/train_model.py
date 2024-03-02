@@ -1,12 +1,10 @@
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
-import sys
-sys.path.insert(0, '/home/squeebit/Documents/Projects/AviWindGuardians/AviWindGuardians/src/')
-from randomforest import RandomForest
+from src.randomforest import RandomForest
 import numpy as np
 
 def trainRandomForestModel(): 
-    df = pd.read_csv('../src/datasets/turbines/wind_turbine_collisions.csv')
+    df = pd.read_csv('./src/datasets/turbines/wind_turbine_collisions.csv')
 
     # Display the first few rows of the dataframe to understand its structure
     df.head()   
