@@ -14,14 +14,14 @@ tasks:
   - type: run_session
     name: Install Dependencies
     script: scripts/install_dependencies.py # enter pathname of your install script
-    memory: 4
+    memory: 32
     cpu: 1
 
   - type: run_session
     name: Train Model
     script: scripts/train_model.py              # enter the pathname of your model training script
-    memory: 4
-    cpu: 2
+    memory: 32
+    cpu: 1
 
   - type: start_application
     short_summary: Launch application
@@ -31,4 +31,4 @@ tasks:
     environment_variables:
       TASK_TYPE: START_APPLICATION
     cpu: 1
-    memory: 4
+    memory: 32
