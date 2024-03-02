@@ -1,0 +1,34 @@
+name: Accessibility Assistant          # Name your Project
+description: Helps the visually impaired surf the web  # Brief description of your project
+author: Timothy Trueblood
+specification_version: 1.0
+prototype_version: 1.0
+date: "2023-01-17"                        # Enter the submission date
+
+runtimes:
+  - editor: Workbench
+    kernel: Python 3.9                    # Fill in the Python version used for your AMP
+    edition: Standard
+
+tasks:
+  - type: run_session
+    name: Install Dependencies
+    script: scripts/install_dependencies.py # enter pathname of your install script
+    memory: 2
+    cpu: 1
+
+  - type: run_session
+    name: Train Model
+    script: scripts/train.py              # enter the pathname of your model training script
+    memory: 4
+    cpu: 2
+
+  - type: start_application
+    short_summary: Launch application
+    name: My Vizualation Application      # Name your application
+    subdomain: mlapp
+    script: main.py                       # enter the pathname of script that launches your visualization/application
+    environment_variables:
+      TASK_TYPE: START_APPLICATION
+    cpu: 1
+    memory: 2
