@@ -1,8 +1,9 @@
-
+import os
 import pandas as pd
 
 # Load the wind turbine data
-turbine_df = pd.read_csv('wind_turbine_location_20231128.csv')
+turbine_file_path = os.path.join(os.getcwd(), 'src/datasets/turbines/wind_turbine_location_20231128.csv')  # Save in the current working directory
+turbine_df = pd.read_csv(turbine_file_path)
 
 # Create a new DataFrame with only longitude, latitude, and an initialized collision column
 turbine_location_df = turbine_df[['xlong', 'ylat']].copy()

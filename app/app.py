@@ -16,7 +16,8 @@ import pandas as pd
 
 
 
-from ..src.randomforest import RandomForest
+from src.randomforest import RandomForest
+
 #from scripts.ai_data_dispatcher import AIDataDispatcher
 import os
 from sklearn.preprocessing import LabelEncoder, MinMaxScaler

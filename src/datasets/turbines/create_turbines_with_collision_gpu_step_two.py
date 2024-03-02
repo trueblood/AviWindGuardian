@@ -5,6 +5,8 @@ import os
 import time
 import pyamdgpuinfo
 
+# This script is meant to run on AMD GPUs. If you have an NVIDIA GPU, you can use the CUDA Toolkit and PyCUDA to run similar code on your GPU. 
+
 # PyOpenCL Setup
 platform = cl.get_platforms()[0]
 device = platform.get_devices()[0]
