@@ -2,15 +2,22 @@ import os
 import pandas as pd
 
 # Load the wind turbine data
-turbine_file_path = os.path.join(os.getcwd(), 'src/datasets/turbines/wind_turbine_location_20231128.csv')  # Save in the current working directory
+turbine_file_path = os.path.join(os.getcwd(), 'src/datasets/turbines/wind_turbine_location_20231128.csv') 
 turbine_df = pd.read_csv(turbine_file_path)
+
+turbine_df['xlong'] = turbine_df['xlong'].round(4)
+turbine_df['ylat'] = turbine_df['ylat'].round(4)
 
 # Create a new DataFrame with only longitude, latitude, and an initialized collision column
 turbine_location_df = turbine_df[['xlong', 'ylat']].copy()
 turbine_location_df['collision'] = 0
 
 # Load the collision data
-collision_df = pd.read_csv('detailed_wind_turbine_collisions_bk.csv')
+collision_file_path = os.path.join(os.getcwd(), 'src/datasets/turbines/detailed_wind_turbine_collisions.csv')  
+collision_df = pd.read_csv(collision_file_path)
+
+collision_df['Turbine_Longitude'] = collision_df['Turbine_Longitude'].round(4)
+collision_df['Turbine_Latitude'] = collision_df['Turbine_Latitude'].round(4)
 
 # Rename the columns in the collision DataFrame for easier merging
 collision_df_renamed = collision_df.rename(columns={"Turbine_Longitude": "xlong", "Turbine_Latitude": "ylat"})
@@ -19,7 +26,7 @@ collision_df_renamed = collision_df.rename(columns={"Turbine_Longitude": "xlong"
 collision_counts = collision_df_renamed.groupby(['xlong', 'ylat']).size().reset_index(name='collision_count')
 
 # Merge the turbine location DataFrame with the aggregated collision counts on longitude and latitude
-combined_df = pd.merge(turbine_location_df, collision_counts, on=['xlong', 'ylat'], how='left')
+combined_df = pd.merge(turbine_location_df, collision_counts, on=['xlong', 'ylat'], how='outer')
 
 # Update the collision column with the collision counts, filling missing values with the original zeros
 combined_df['collision'] = combined_df['collision_count'].fillna(0).astype(int)
@@ -28,7 +35,9 @@ combined_df['collision'] = combined_df['collision_count'].fillna(0).astype(int)
 combined_df.drop(columns=['collision_count'], inplace=True)
 
 # Save the combined DataFrame to a new CSV file
-combined_df.to_csv('wind_turbines_with_collisions.csv', index=False)
+output_file_path = os.path.join(os.getcwd(), 'src/datasets/turbines/wind_turbines_with_collisions.csv')  
+
+combined_df.to_csv(output_file_path, index=False)
 
 print("CSV file has been saved to 'wind_turbines_with_collisions.csv'")
 num_rows_combined = combined_df['collision'].sum()
