@@ -10,6 +10,7 @@ from sklearn.preprocessing import LabelEncoder
 import pandas as pd
 from sklearn.model_selection import ParameterGrid
 from shapely.geometry import Point, Polygon
+import multiprocessing
 #from line_profiler import profile
 
 
@@ -51,7 +52,7 @@ class RandomForest:
         #    for i in range(self.n_estimators)
         #)
         indices = np.arange(n_samples)
-        tree_results = Parallel(n_jobs=15, verbose=10)(
+        tree_results = Parallel(n_jobs=(multiprocessing.cpu_count() - 1), verbose=10)(
             delayed(self.train_tree)(indices, X, y, max_features, n_features, self.random_state + i if self.random_state is not None else None)
             for i in range(self.n_estimators)
         )

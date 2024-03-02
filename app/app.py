@@ -13,12 +13,8 @@ import dash_leaflet as dl
 from dash import Dash, html, Output, Input, dcc
 import dash_bootstrap_components as dbc
 import pandas as pd
-
-
-
-from src.randomforest import RandomForest
-
 #from scripts.ai_data_dispatcher import AIDataDispatcher
+from src.randomforest import RandomForest
 import os
 from sklearn.preprocessing import LabelEncoder, MinMaxScaler
 import numpy as np
@@ -26,7 +22,7 @@ import dash
 import dash_core_components as dcc
 import dash_html_components as html
 from dash.dependencies import Input, Output
-#from scripts.collisionforecastarima import CollisionForecastARIMA
+
 import warnings
 from datetime import datetime, timedelta
 from prophet import Prophet
@@ -41,33 +37,57 @@ app = Dash(
     external_stylesheets=[dbc.themes.SPACELAB, dbc.icons.FONT_AWESOME, dbc.icons.BOOTSTRAP],
 )
 
+# Load the detailed collision data
+detailed_collisions_path = '../src/datasets/turbines/detailed_wind_turbine_collisions.csv'
+detailed_collisions_df = pd.read_csv(detailed_collisions_path)
+
+# Ensure 'Timestamp' is a datetime type and extract the year
+detailed_collisions_df['Timestamp'] = pd.to_datetime(detailed_collisions_df['Timestamp'], errors='coerce')
+detailed_collisions_df['Year'] = detailed_collisions_df['Timestamp'].dt.year
+
+# Determine the minimum and maximum year in the dataset
+min_year = int(detailed_collisions_df['Year'].min())
+max_year = int(detailed_collisions_df['Year'].max() - 1)
+
 """
 ==========================================================================
 Markdown Text
 """
 learn_text = dcc.Markdown(
     """
-    Past performance certainly does not determine future results, but you can still
-    learn a lot by reviewing how various asset classes have performed over time.
+- **Learn**: Click on the learn tab to learn about the product.
 
-    Use the sliders to change the asset allocation (how much you invest in cash vs
-    bonds vs stock) and see how this affects your returns.
+- **Point Marker**: Click on the point marker tab to plot points.
 
-    Note that the results shown in "My Portfolio" assumes rebalancing was done at
-    the beginning of every year.  Also, this information is based on the S&P 500 index
-    as a proxy for "stocks", the 10 year US Treasury Bond for "bonds" and the 3 month
-    US Treasury Bill for "cash."  Your results of course,  would be different based
-    on your actual holdings.
+    - **Map Interaction**: Select the map and click on either a mark point or plot a polygon.
+        - To erase all points, click the trash can icon.
+        - To move and modify existing points and polygons, click the edit button.
 
-    This is intended to help you determine your investment philosophy and understand
-    what sort of risks and returns you might see for each asset category.
+    - **Wind Speed and Collision Percentage**:
+        - After your point is added to the map, the code retrieves the wind speed from a weather API service and sends the longitude and latitude coordinates to the model, which returns the collision percentage.
 
-    The  data is from [Aswath Damodaran](http://people.stern.nyu.edu/adamodar/New_Home_Page/home.htm)
-    who teaches  corporate finance and valuation at the Stern School of Business
-    at New York University.
+            > **Note**: The polygons take longer to process because the code considers the longitudes and latitudes inside the polygon.
 
-    Check out his excellent on-line course in
-    [Investment Philosophies.](http://people.stern.nyu.edu/adamodar/New_Home_Page/webcastinvphil.htm)
+    - **Model Feedback**:
+        - After results come back, you have the option to provide feedback to the model.
+        - Press thumbs up if the collision prediction is correct; otherwise, press thumbs down. This adds or updates the longitude and latitude coordinates in the dataset that trains the turbines.
+
+- **Map Data**:
+    - Hover over each point on the map to get average wind speed and collision risk.
+
+- **Turbine Location**:
+    - After you add a new turbine location or plot a turbine location area, the forecast collision line chart updates with the new points, adding Time Series Analysis to the data.
+        - You can filter the year and the forecasting period.
+        - Add more and remove points to see how that affects your collision prediction.
+
+- **Model Retraining**:
+    - After collecting enough model feedback data, you can go in and retrain the random forest model.
+        - Note: It takes a while to retrain the models.
+    - The forecast model requires a different training set. You will need to run Python scripts behind the scenes to set this up.
+        - An option to retrain this model from the dashboard is included in case you run into any errors with forecasting.
+
+> **Note**: If you encounter any errors with the models, go to the model updates tab and retrain the models. Please note this takes a while.
+
     """
 )
 
@@ -76,7 +96,7 @@ learn_text_model_training = dcc.Markdown(
      This page lets you train both the Random Forest and Forecasting models. 
      If there is new turbine collision data to train on, you want to click the 'Train Random Forest Model' button. 
      Else, if you want to train the Forecasting model on known bird collisions with date for turbines on updated data, click the 'Train Forecasting Model' button. 
-     Or, if you're having troubleshooting issues, retraining the models is usually a fix.
+     Or, if you're having troubleshooting issues, retraining the models is usually a fix. Warning this may take. 
     """
 )
 
@@ -247,67 +267,128 @@ def parse_custom_date(date_str):
         #print(f"Failed to parse {date_str}: {e}")
         return None
 # Meta Prophet aggregated 
+# def load_forecast(_):
+#     #print("in load forecast")
+#     try:
+#         # Load the detailed collision data
+#         detailed_collisions_path = 'exported_data.csv'
+#         detailed_collisions_df = pd.read_csv(detailed_collisions_path)
+#         detailed_collisions_df['Turbine_Longitude'] = detailed_collisions_df['Turbine_Longitude'].round(4)
+#         detailed_collisions_df['Turbine_Latitude'] = detailed_collisions_df['Turbine_Latitude'].round(4)
+#         # Load the wind turbine location data
+#         wind_turbines_path = 'datasets/turbines/wind_turbines_with_collisions.csv'
+#         wind_turbines_df = pd.read_csv(wind_turbines_path)
+#         wind_turbines_df['xlong'] = wind_turbines_df['xlong'].round(4)
+#         wind_turbines_df['ylat'] = wind_turbines_df['ylat'].round(4)
+#         # Merge the datasets on longitude and latitude
+#         merged_df = pd.merge(detailed_collisions_df, wind_turbines_df, 
+#                      left_on=['Turbine_Longitude', 'Turbine_Latitude'], 
+#                      right_on=['xlong', 'ylat'], 
+#                      how='inner')
+        
+#         merged_df['Timestamp'] = pd.to_datetime(merged_df['Timestamp'], errors='coerce')
+#         # Assuming 'Timestamp' column exists and represents when collisions occurred
+#         #print(merged_df.head()) 
+        
+#         print(len(merged_df))
+
+#         # Aggregate collision counts by date for the merged dataset
+#         aggregated_data = merged_df.resample('D', on='Timestamp').agg({'collision': 'sum'}).reset_index()
+#         aggregated_data.rename(columns={'Timestamp': 'ds', 'collision': 'y'}, inplace=True)
+#         #print(aggregated_data.head())
+#         aggregated_data = aggregated_data.dropna()
+
+#         # Initialize and fit the Prophet model
+#         model = Prophet()
+#         model.fit(aggregated_data)
+#         #print("after prophet fit")
+        
+#         # Create future dataframe for forecasting (e.g., next 365 days)
+#         future_dates = model.make_future_dataframe(periods=365)
+        
+#         # Predict the values for future dates
+#         forecast = model.predict(future_dates)
+        
+#         # Create a figure to plot the forecast
+#         fig = go.Figure()
+        
+#         # Plot the historical aggregated collision counts
+#         fig.add_trace(go.Scatter(x=aggregated_data['ds'], y=aggregated_data['y'], mode='lines', name='Historical Aggregated Collisions'))
+        
+#         # Add the forecasted data
+#         fig.add_trace(go.Scatter(x=forecast['ds'], y=forecast['yhat'], mode='lines+markers', name='Forecasted Collisions', line=dict(dash='dot')))
+        
+#         # Update plot layout
+#         fig.update_layout(
+#             title='Aggregated Collision Counts and Forecast',
+#             xaxis_title='Date',
+#             yaxis_title='Number of Collisions',
+#             xaxis_rangeslider_visible=True,
+#             showlegend=True,
+#             template="none"
+#         )
+
+#         return fig, 'Model loaded and forecast generated successfully.'
+#     except FileNotFoundError as e:
+#         print(e)
+#         return go.Figure(), 'Required file not found. Please check the file paths.'
+
 def load_forecast(_):
-    #print("in load forecast")
     try:
         # Load the detailed collision data
-        detailed_collisions_path = 'exported_data.csv'
-        detailed_collisions_df = pd.read_csv(detailed_collisions_path)
-        #print(detailed_collisions_df.head())
-        # Load the wind turbine location data
-        wind_turbines_path = 'datasets/turbines/wind_turbines_with_collisions.csv'
-        wind_turbines_df = pd.read_csv(wind_turbines_path)
-        #print(wind_turbines_df.head())
-        # Merge the datasets on longitude and latitude
-        merged_df = pd.merge(detailed_collisions_df, wind_turbines_df, 
-                     left_on=['Turbine_Longitude', 'Turbine_Latitude'], 
-                     right_on=['xlong', 'ylat'], 
-                     how='inner')
+        #detailed_collisions_path = 'exported_data.csv'
+        #detailed_collisions_df = pd.read_csv(detailed_collisions_path)
         
-        merged_df['Timestamp'] = pd.to_datetime(merged_df['Timestamp'], errors='coerce')
-        # Assuming 'Timestamp' column exists and represents when collisions occurred
-        #print(merged_df.head()) 
-        
-        # Aggregate collision counts by date for the merged dataset
-        aggregated_data = merged_df.resample('D', on='Timestamp').agg({'collision': 'sum'}).reset_index()
-        aggregated_data.rename(columns={'Timestamp': 'ds', 'collision': 'y'}, inplace=True)
-        
+        # Ensure 'Timestamp' is a datetime type and extract the year
+        detailed_collisions_df['Timestamp'] = pd.to_datetime(detailed_collisions_df['Timestamp'], errors='coerce')
+        detailed_collisions_df['Year'] = detailed_collisions_df['Timestamp'].dt.year
+
+        print(len(detailed_collisions_df))
+        # Assuming each row represents a collision, count collisions by year
+        aggregated_data = detailed_collisions_df.groupby('Year').size().reset_index(name='y')
+        aggregated_data.rename(columns={'Year': 'ds'}, inplace=True)
+        aggregated_data = aggregated_data.dropna()
+        aggregated_data['ds'] = pd.to_datetime(aggregated_data['ds'].astype(int).astype(str) + '-01-01')
+
+        print(len(aggregated_data))
+        print(aggregated_data.head())
         # Initialize and fit the Prophet model
-        model = Prophet()
+        model = Prophet(yearly_seasonality=True)  # Enable yearly seasonality as we're dealing with yearly data
         model.fit(aggregated_data)
-        #print("after prophet fit")
-        
-        # Create future dataframe for forecasting (e.g., next 365 days)
-        future_dates = model.make_future_dataframe(periods=365)
-        
-        # Predict the values for future dates
-        forecast = model.predict(future_dates)
+
+        # Create future dataframe for forecasting next years
+        future_years = model.make_future_dataframe(periods=5, freq='Y')  # Forecasting for the next 5 years as an example
+
+        # Predict the values for future years
+        forecast = model.predict(future_years)
         
         # Create a figure to plot the forecast
         fig = go.Figure()
         
         # Plot the historical aggregated collision counts
-        fig.add_trace(go.Scatter(x=aggregated_data['ds'], y=aggregated_data['y'], mode='lines', name='Historical Aggregated Collisions'))
-        
+        fig.add_trace(go.Scatter(x=aggregated_data['ds'], y=aggregated_data['y'], mode='lines', name='Historical Collisions'))
+
         # Add the forecasted data
         fig.add_trace(go.Scatter(x=forecast['ds'], y=forecast['yhat'], mode='lines+markers', name='Forecasted Collisions', line=dict(dash='dot')))
-        
+
         # Update plot layout
         fig.update_layout(
-            title='Aggregated Collision Counts and Forecast',
-            xaxis_title='Date',
+            title='Yearly Collision Counts and Forecast',
+            xaxis_title='Year',
             yaxis_title='Number of Collisions',
             xaxis_rangeslider_visible=True,
             showlegend=True,
-            template="none"
+            template="none",
+            xaxis=dict(
+                range=[min_year, max_year],  # replace 'start_year' with the actual start year
+            ),
         )
 
         return fig, 'Model loaded and forecast generated successfully.'
     except FileNotFoundError as e:
         print(e)
         return go.Figure(), 'Required file not found. Please check the file paths.'
-
-
+    
 # not working
 # def load_forecast(_):
 #     print("in load forecast")
@@ -589,7 +670,7 @@ slider_card_forecast = dbc.Card(
                         min=0,
                         max=365,
                         step=1,
-                        value=90,  # Default to 90 days
+                        value=0,  # Default to 0 days
                         included=False,
                     ),
                 ],
@@ -601,11 +682,11 @@ slider_card_forecast = dbc.Card(
                     html.H5("Select Start Year:", className="card-title"),
                     dcc.Slider(
                         id="start-year-slider",
-                        marks={i: str(i) for i in range(2011, 2023)},  # Example range
-                        min=2011,
-                        max=2022,
+                        marks={i: str(i) for i in range(min_year, max_year + 1)},   # Example range
+                        min=min_year,
+                        max=max_year,
                         step=1,
-                        value=2011,  # Default to 2021
+                        value=min_year,  # Default to 2021
                         included=False,
                     ),
                 ],
@@ -658,8 +739,8 @@ model_training_card = dbc.Card(
 # ========= Learn Tab  Components
 learn_card = dbc.Card(
     [
-        dbc.CardHeader("An Introduction to Asset Allocation"),
-        dbc.CardBody(learn_text),
+        dbc.CardHeader("An Introduction to AviWind Guardian"),
+        dbc.CardBody(learn_text, style={'overflow': 'scroll', 'height': '100vh'}),
     ],
     className="mt-4",
 )
@@ -715,7 +796,11 @@ app.layout = dbc.Container(
                             make_map()  # Call the function to create the map
                         ]),
                         html.Hr(),
-                        dcc.Graph(id='forecast-graph', className="pb-4", figure=load_forecast(1)[0]),
+                        dcc.Graph(id='forecast-graph', className="pb-4", figure=load_forecast(1)[0],
+                                config={
+                                    'modeBarButtonsToRemove': ['pan2d', 'select2d', 'lasso2d', 'zoom2d', 'autoScale2d', 'resetScale2d', 'toggleSpikelines', 'hoverClosestCartesian', 'hoverCompareCartesian'],
+                                    'modeBarButtonsToAdd': ['zoomIn2d', 'zoomOut2d', 'autoScale2d', 'toImage']
+                                }),
                         html.Div(id="prediction-output"),
                         html.Div(id='coords-json', style={'display': 'none'}),
                         dcc.Interval(
@@ -1071,7 +1156,7 @@ def btn_TrainModel(n_clicks):
         return 'Not Training'
 
 def trainModel(): 
-    df = pd.read_csv('../src/datasets/turbines/wind_turbine_collisions.csv')
+    df = pd.read_csv('datasets/dataset.csv')
 
     # Display the first few rows of the dataframe to understand its structure
     df.head()   
@@ -1199,40 +1284,40 @@ def update_graph_on_load(_):
     figure, status_message = load_forecast(_)
     return figure, status_message
 
-# @app.callback(
-#     Output('train-status', 'children'),
-#     Input('train-button-forecast', 'n_clicks'),
-#     prevent_initial_call=True
-# )
-# def train_arima_model(n_clicks):
-#     # Replace the following path with the path to your dataset
-#     data_path = 'datasets/turbines/detailed_wind_turbine_collisions_bk.csv'
-#     if n_clicks > 0:
-#         # Load your dataset
-#         data = pd.read_csv(data_path)
+@app.callback(
+    Output('train-status', 'children'),
+    Input('train-button-forecast', 'n_clicks'),
+    prevent_initial_call=True
+)
+def train_arima_model(n_clicks):
+    # Replace the following path with the path to your dataset
+    data_path = 'datasets/turbines/detailed_wind_turbine_collisions_bk.csv'
+    if n_clicks > 0:
+        # Load your dataset
+        data = pd.read_csv(data_path)
         
-#         data['Timestamp'] = pd.to_datetime(data['Timestamp'], errors='coerce')
-#         # Specify the column names (time column first)
-#         columns = ['Timestamp']
+        data['Timestamp'] = pd.to_datetime(data['Timestamp'], errors='coerce')
+        # Specify the column names (time column first)
+        columns = ['Timestamp']
         
-#         # Initialize the forecasting object with your data and column names
-#         forecast_arima = CollisionForecastARIMA(data, columns)
+        # Initialize the forecasting object with your data and column names
+        forecast_arima = CollisionForecastARIMA(data, columns)
         
-#         # Prepare the data
-#         forecast_arima.prepare_data()
+        # Prepare the data
+        forecast_arima.prepare_data()
         
-#         # Fit the ARIMA model (specify the order parameters according to your dataset)
-#         forecast_arima.fit_model(order=(1, 1, 1))
+        # Fit the ARIMA model (specify the order parameters according to your dataset)
+        forecast_arima.fit_model(order=(1, 1, 1))
         
-#         # Save the model
-#         model_filename = 'arima_forecast_arima.joblib'
-#         forecast_arima.save_model(model_filename)
-#         print(f"Model saved to {model_filename}")
+        # Save the model
+        model_filename = 'arima_forecast_arima.joblib'
+        forecast_arima.save_model(model_filename)
+        print(f"Model saved to {model_filename}")
         
-#         return 'Model trained and saved successfully.'
-#     else:
-#         # Button has not been clicked, do not update anything
-#         raise PreventUpdate
+        return 'Model trained and saved successfully.'
+    else:
+        # Button has not been clicked, do not update anything
+        raise PreventUpdate
 
     
 # @app.callback(
@@ -1326,32 +1411,26 @@ def update_forecast_plot(forecast_period_slider_value, start_year_slider_value, 
     # Print contents of coords_json to console for debugging
     
     try:
-        # Load and prepare your datasets
-        detailed_collisions_path = 'exported_data.csv'
-        wind_turbines_path = 'datasets/turbines/wind_turbines_with_collisions.csv'
-        detailed_collisions_df = pd.read_csv(detailed_collisions_path)
-        wind_turbines_df = pd.read_csv(wind_turbines_path)
+        # Load the detailed collision data
+        #detailed_collisions_path = 'exported_data.csv'
+        #detailed_collisions_df = pd.read_csv(detailed_collisions_path)
         
-        # Merge datasets
-        merged_df = pd.merge(detailed_collisions_df, wind_turbines_df, 
-                             left_on=['Turbine_Longitude', 'Turbine_Latitude'], 
-                             right_on=['xlong', 'ylat'], 
-                             how='inner')
-        merged_df['Timestamp'] = pd.to_datetime(merged_df['Timestamp'], errors='coerce')
-
-        # Filter data based on selected start year for demonstration purposes
+        # Convert 'Timestamp' to datetime and filter data based on selected start year
+        detailed_collisions_df['Timestamp'] = pd.to_datetime(detailed_collisions_df['Timestamp'], errors='coerce')
         start_date = pd.to_datetime(f"{start_year_slider_value}-01-01")
-        filtered_df = merged_df[merged_df['Timestamp'] >= start_date]
+        filtered_df = detailed_collisions_df[detailed_collisions_df['Timestamp'] >= start_date]
+        
+        # Assuming each row represents a collision, count collisions by year
+        filtered_df['Year'] = filtered_df['Timestamp'].dt.year
+        aggregated_data = filtered_df.groupby('Year').size().reset_index(name='y')
+        aggregated_data.rename(columns={'Year': 'ds'}, inplace=True)
+        
+        # Convert 'ds' from year to datetime format for Prophet
+        aggregated_data['ds'] = pd.to_datetime(aggregated_data['ds'].astype(str) + '-01-01')
 
-        # Aggregate collision counts by date
-        aggregated_data = filtered_df.resample('D', on='Timestamp').agg({'collision': 'sum'}).reset_index()
-        aggregated_data.rename(columns={'Timestamp': 'ds', 'collision': 'y'}, inplace=True)
+        print("before", aggregated_data)
 
-        # Parse coords_json to check if it's effectively empty
         coords_data = json.loads(coords_json)
-        #if 'data' in coords_data and not coords_data['data']:
-        #    print("Received empty dataset in coords_json. Skipping processing for new coordinates.")
-        #    raise PreventUpdate
 
         # If coords_json is provided, adjust aggregated_data with additional_collisions
         if 'data' in coords_data and coords_data['data']:
@@ -1366,9 +1445,11 @@ def update_forecast_plot(forecast_period_slider_value, start_year_slider_value, 
             #print("after", aggregated_data)
             # Check if today's date exists in 'ds' column and update or append accordingly
             if pd.to_datetime(today_date) in aggregated_data['ds'].values:
+                print("added new collision value")
                 aggregated_data.loc[aggregated_data['ds'] == pd.to_datetime(today_date), 'y'] += additional_collisions
                 
             else:
+                print("added new collision value")
                 new_row = {'ds': pd.to_datetime(today_date), 'y': additional_collisions}
                 new_row_df = pd.DataFrame([new_row])
                 aggregated_data = pd.concat([aggregated_data, new_row_df], ignore_index=True)
@@ -1385,9 +1466,18 @@ def update_forecast_plot(forecast_period_slider_value, start_year_slider_value, 
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=aggregated_data['ds'], y=aggregated_data['y'], mode='lines', name='Historical Aggregated Collisions'))
         fig.add_trace(go.Scatter(x=forecast['ds'], y=forecast['yhat'], mode='lines+markers', name='Forecasted Collisions', line=dict(dash='dot')))
-        fig.update_layout(title='Aggregated Collision Counts and Forecast',
-                          xaxis_title='Date', yaxis_title='Number of Collisions',
-                          xaxis_rangeslider_visible=True, showlegend=True, template="none")
+        fig.update_layout(
+            title='Yearly Collision Counts and Forecast',
+            xaxis_title='Year',
+            yaxis_title='Number of Collisions',
+            xaxis_rangeslider_visible=True,
+            showlegend=True,
+            template="none"
+           # xaxis=dict(
+           #     range=[min_year, max_year],  # replace 'start_year' with the actual start year
+           # ),
+        )
+
 
         return fig
     except FileNotFoundError as e:
