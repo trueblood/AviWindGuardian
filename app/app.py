@@ -36,7 +36,7 @@ app = Dash(
 )
 
 # Load the detailed collision data
-detailed_collisions_path = '../src/datasets/turbines/detailed_wind_turbine_collisions.csv'
+detailed_collisions_path = os.path.join(os.getcwd(), 'src/datasets/turbines/detailed_wind_turbine_collisions.csv') 
 detailed_collisions_df = pd.read_csv(detailed_collisions_path)
 
 # Ensure 'Timestamp' is a datetime type and extract the year
@@ -45,7 +45,7 @@ detailed_collisions_df['Year'] = detailed_collisions_df['Timestamp'].dt.year
 
 # Determine the minimum and maximum year in the dataset
 min_year = int(detailed_collisions_df['Year'].min())
-max_year = int(detailed_collisions_df['Year'].max() - 1)
+max_year = int(detailed_collisions_df['Year'].max() - 1)    
 
 """
 ==========================================================================
@@ -922,7 +922,7 @@ def find_coords_by_unique_group_id(coords_json_str, unique_group_id):
 
 def update_collision_in_csv(latitude, longitude, adjustment_value):
     # Load the CSV file
-    csv_file_path = 'datasets/turbines/wind_turbines_with_collisions.csv'
+    csv_file_path = os.path.join(os.getcwd(), 'src/datasets/turbines/wind_turbines_with_collisions.csv') 
     df = pd.read_csv(csv_file_path)
     
     # Find the row with the matching latitude and longitude
