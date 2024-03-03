@@ -400,7 +400,7 @@ def convert_geojson_to_dataframe(geojson):
         Output("coords-display-container", "children", allow_duplicate=True),  # Update the display container
         Output("coords-json", "children", allow_duplicate=True),  # Update the JSON data
         Output('marker-layer', 'children', allow_duplicate=True),
-        Output("loading-output", "children")
+        Output("loading-output", "children", allow_duplicate=True)
     ],
     [Input("edit_control", "geojson")],  # Listen for clicks on the submit button
     [State("coords-json", "children")],  # Maintain the state of coords-json
@@ -627,64 +627,41 @@ def create_row(group, counter, label, lat, lon, unique_group_id, windSpeed):
 
 @app.callback(
     Output('output-container-button', 'children'),
-    Input('train-button-random-forest', 'n_clicks')
+    Output("loading-output", "children", allow_duplicate=True),
+    Input('train-button-random-forest', 'n_clicks'),
+    prevent_initial_call=True
 )
 def btn_TrainModel(n_clicks):
     if n_clicks > 0:
         trainModel()
-        return 'Model Trained Successfully'
+        return 'Model Trained Successfully', None
     else:
-        return 'Not Training'
+        return 'Not Training', None
 
-def trainModel(): 
-    df = pd.read_csv('datasets/dataset.csv')
+def trainModel():
+    dataset_location_filepath = os.path.join(os.getcwd(), 'src/datasets/turbines/wind_turbines_with_collisions.csv') 
+    df = pd.read_csv(dataset_location_filepath)
 
     # Display the first few rows of the dataframe to understand its structure
-    df.head()   
-
-    # Define the feature names based on your dataset
-    feature_names = ['xlong', 'ylat', 'type_encoded', 'birdspecies_encoded', 'timestamp']
-
-    # Mocking up some feature importances as an example, replace with your actual feature importances
-    # Assuming my_tree.feature_importances is a dictionary with indices as keys and importance scores as values
-    # For demonstration, using random values
-    feature_importances = {0: 0.2, 1: 0.3, 2: 0.25, 3: 0.25}
-
-    # Since 'timestamp' might not be immediately useful and contains 'not applicable', we'll exclude it.
-    # We'll also prepare to encode 'type' and 'birdspecies' if they have relevant variance.
-    df = df.drop(['timestamp'], axis=1)  # Dropping the timestamp column
-    df = df[df['type'] != 'bird']
-
-    # Now, when converting this column to int, there should be no 'not applicable' values
-    data = df.values  # If 'data' is derived from df
-    df['birdspecies'] = df['birdspecies'].str.lower()  # Convert to lowercase for consistency
-    # Check the variance of 'type' and 'birdspecies' to decide on encoding
-        
-    # Encode categorical variables using Label Encoding for simplicity
-    label_encoder_type = LabelEncoder()
-    label_encoder_birdspecies = LabelEncoder()
-
+    df.head() 
     
-    df['type_encoded'] = label_encoder_type.fit_transform(df['type'])
-    df['birdspecies_encoded'] = label_encoder_birdspecies.fit_transform(df['birdspecies'])
+    # Replace 'not applicable' with -1
     df['collision'] = df['collision'].replace('not applicable', -1)
 
-    # Example of handling 'not applicable' values in 'birdspecies_encoded' column before conversion
-    df['birdspecies_encoded'] = df['birdspecies_encoded'].replace('not applicable', np.nan)  # Replace with NaN or a placeholder
-    #df.dropna(subset=['birdspecies_encoded'], inplace=True)  # Drop rows with NaN in 'birdspecies_encoded'
-
+    # Fill NaN values with -1 (or an appropriate value for your context)
+    df['collision'] = df['collision'].fillna(-1)
+    
     # Convert 'collision' to integer
     df['collision'] = df['collision'].astype(int)
 
     # Prepare X and Y
-    #X = df[['xlong', 'ylat', 'type_encoded', 'birdspecies_encoded']].values
     X = df[['xlong', 'ylat']].values
     Y = df['collision'].values
-    randomForest = RandomForest()
-
-    mean_accuracy, std_dev = randomForest.evaluate_model_with_kfold(X, Y, n_splits=5)
-    print(f"Mean Accuracy: {mean_accuracy}, Standard Deviation: {std_dev}")
     
+    randomForest = RandomForest()
+    mean_accuracy, std_dev = randomForest.evaluate_model_with_kfold(X, Y, n_splits=5)
+    
+    print(f"Mean Accuracy: {mean_accuracy}, Standard Deviation: {std_dev}") 
 
 # Helper function to convert GeoJSON to DataFrame
 def convert_geojson_to_dataframe(geojson):
@@ -752,13 +729,14 @@ def display_coords(geojson):
 @app.callback(  
     Output('forecast-graph', 'figure', allow_duplicate=True),
     Output('model-status', 'children'),
+    Output("loading-output", "children", allow_duplicate=True),
     Input('train-button-forecast', 'n_clicks'),
     prevent_initial_call=True
 )
 def update_graph_on_load(n_clicks):
     if (n_clicks > 0):
         figure, status_message = load_forecast()
-        return figure, status_message
+        return figure, status_message, None
 
 @app.callback(
     Output('forecast-graph', 'figure'),
