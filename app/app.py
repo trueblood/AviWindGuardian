@@ -221,7 +221,7 @@ slider_card_forecast = dbc.Card(
                     html.H5("Forecast Period (Days):", className="card-title"),
                     dcc.Slider(
                         id="forecast-period-slider",
-                        marks={i: f"{i} days" for i in range(0, 366, 30)},  # Adjust based on your needs
+                        marks={i: f"{i} days" for i in range(0, 366, 60)},  # Adjust based on your needs
                         min=0,
                         max=365,
                         step=1,
