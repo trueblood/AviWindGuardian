@@ -221,11 +221,11 @@ slider_card_forecast = dbc.Card(
                     html.H5("Forecast Period (Days):", className="card-title"),
                     dcc.Slider(
                         id="forecast-period-slider",
-                        marks={i: f"{i} days" for i in range(0, 366, 60)},  # Adjust based on your needs
+                        marks={i: f"{i} year{'s' if i != 1 else ''}" for i in range(0, 6)},  # From 0 to 5 years, adjusting pluralization
                         min=0,
-                        max=365,
-                        step=1,
-                        value=0,  # Default to 0 days
+                        max=5,  # Set the maximum to 5 years
+                        step=1,  # Step by 1 year at a time
+                        value=0,  # Default to the starting point, which is 0 years
                         included=False,
                     ),
                 ],
@@ -811,7 +811,7 @@ def update_forecast_plot(forecast_period_slider_value, start_year_slider_value, 
         # Prophet forecasting
         model = Prophet()
         model.fit(aggregated_data)
-        future_dates = model.make_future_dataframe(periods=forecast_period_slider_value)
+        future_dates = model.make_future_dataframe(periods=forecast_period_slider_value, freq='Y')
         forecast = model.predict(future_dates)
 
         newest_date = aggregated_data['ds'].max()
