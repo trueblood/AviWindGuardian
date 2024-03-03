@@ -1051,10 +1051,10 @@ def extract_average_wind_speed(wind_speed_str):
 def trigger_action(n_clicks):   
     return dict(mode="remove", action="clear all", n_clicks=n_clicks)  # include n_click to ensure prop changes
 
-if __name__ == "__main__":
-    app.run_server(debug=True, port=8060)
-    print(os.getcwd())
-    print("Current Working Directory:", os.getcwd())
+#if __name__ == "__main__":
+    #app.run_server(debug=True, port=8060)
+    #print(os.getcwd())
+    #print("Current Working Directory:", os.getcwd())
 
-#if __name__=="__main__":
- # app.run(host="127.0.0.1", port=int(os.environ['CDSW_APP_PORT']))
+if __name__=="__main__":
+  app.run(host="127.0.0.1", port=int(os.environ['CDSW_APP_PORT']))
