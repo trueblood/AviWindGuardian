@@ -29,7 +29,7 @@ AviWind Guardian utilizes the following datasets:
 
 ## Getting Started
 
-To get started with AviWind Guardian, clone this repository and follow the setup instructions detailed below:
+To get started with AviWind Guardian, follow these steps:
 
 ```bash
 # Clone the repository
@@ -38,8 +38,29 @@ git clone https://github.com/trueblood/AviWindGuardians.git
 # Navigate to the project directory
 cd AviWindGuardians
 
-# Installation instructions
-# (Placeholder for detailed setup and installation instructions)
+# Install dependencies
+python scripts/install_dependencies.py
 
-# Running the application
-# (Placeholder for command to run the application)
+# Extract and normalize data for each dataset
+# Replace <dataset_folder> with the actual path to your dataset folder
+python <dataset_folder>/extract_to_dataset.py
+
+# Navigate to the turbines folder to prepare bird and turbine data
+cd turbines
+
+# Combine bird data files
+python create_bird_data_set_step_one.py
+
+# Generate turbines with collision data (optimized for AMD GPUs)
+python create_turbines_with_collision_gpu_step_two.py
+
+# Create the final collision data CSV
+python create_collision_csv_step_three.py
+
+# Train the model
+cd ..
+python scripts/train_model.py
+
+# Launch the application
+cd app
+python app.py
