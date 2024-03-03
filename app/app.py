@@ -29,10 +29,12 @@ import re
 from dash.dependencies import Input, Output
 
 warnings.filterwarnings("ignore")
+assests_folder_path = os.path.join(os.getcwd(), 'app/assets') 
 
 app = Dash(
     __name__,
     external_stylesheets=[dbc.themes.SPACELAB, dbc.icons.FONT_AWESOME, dbc.icons.BOOTSTRAP],
+    assets_folder=assests_folder_path
 )
 
 # Load the detailed collision data
