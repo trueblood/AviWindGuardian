@@ -1,5 +1,4 @@
 import numpy as np
-#from line_profiler import profile
 
 class Node:
     def __init__(self, feature_index=None, threshold=None, left=None, right=None, value=None):
