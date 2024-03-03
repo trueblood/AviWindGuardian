@@ -96,7 +96,7 @@ learn_text_model_training = dcc.Markdown(
      This page lets you train both the Random Forest and Forecasting models. 
      If there is new turbine collision data to train on, you want to click the 'Train Random Forest Model' button. 
      Else, if you want to train the Forecasting model on known bird collisions with date for turbines on updated data, click the 'Train Forecasting Model' button. 
-     Or, if you're having troubleshooting issues, retraining the models is usually a fix. Warning this may take. 
+     Or, if you're having troubleshooting issues, retraining the models is usually a fix. Warning this may take hours to complete. 
     """
 )
 
